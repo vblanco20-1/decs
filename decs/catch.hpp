@@ -13742,6 +13742,7 @@ int main (int argc, char * argv[]) {
 #endif
 
     return Catch::Session().run( argc, argv );
+	return 0;
 }
 
 #else // __OBJC__
