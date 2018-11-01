@@ -238,7 +238,7 @@ TEST_CASE("Entity Creation: 1 Maxed Entity Block - Batched") {
 
 	SECTION("Adding Pos + Rot (2 Components)") {
 
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, ARRAY_SIZE)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(PosRot, Archetype::ARRAY_SIZE)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -253,7 +253,7 @@ TEST_CASE("Entity Creation: 1 Maxed Entity Block - Batched") {
 		REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
 	SECTION("Adding Pos + Rot + Big(3 Components)") {
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, ARRAY_SIZE)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(PosRot, Archetype::ARRAY_SIZE)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -269,7 +269,7 @@ TEST_CASE("Entity Creation: 1 Maxed Entity Block - Batched") {
 		REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
 	SECTION("Adding Pos (1 Components)") {
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, ARRAY_SIZE)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(PosRot, Archetype::ARRAY_SIZE)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -307,7 +307,7 @@ TEST_CASE("Entity Creation: 1 Maxed Entity Block + 1 - Batched") {
 
 	SECTION("Adding Pos + Rot (2 Components)") {
 
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, ARRAY_SIZE+1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(PosRot, PosRot.ARRAY_SIZE +1)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -322,7 +322,7 @@ TEST_CASE("Entity Creation: 1 Maxed Entity Block + 1 - Batched") {
 		REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
 	SECTION("Adding Pos + Rot + Big(3 Components)") {
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, ARRAY_SIZE+1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(PosRot, PosRot.ARRAY_SIZE +1)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -338,7 +338,7 @@ TEST_CASE("Entity Creation: 1 Maxed Entity Block + 1 - Batched") {
 		REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
 	SECTION("Adding Pos (1 Components)") {
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, ARRAY_SIZE+1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(PosRot, PosRot.ARRAY_SIZE +1)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -427,7 +427,7 @@ TEST_CASE("Entity Creation: 1 Million entities - Batched") {
 	}
 }
 
-TEST_CASE("Iteration: 1 entity - Matches ")
+TEST_CASE("Iteration: 1 entity - Queries ")
 {
 	Archetype PosRotBig;
 	PosRotBig.AddComponent<Position>();
@@ -451,15 +451,15 @@ TEST_CASE("Iteration: 1 entity - Matches ")
 
 		EntityHandle handle = ECS.CreateEntityBatched(PosRotBig, 1)[0];
 
-		
+
 		ECS.IterateBlocks(PositionSearch, empty, [&](ArchetypeBlock & block) {
 			BlocksIterated++;
 			auto &ap = block.entities;//block.GetComponentArray<Position>();
-			
+
 			for (int i = 0; i < block.last; i++)
 			{
 				EntitiesIterated++;
-				
+
 				if (ap[i] == handle)
 				{
 					HandleMatches++;
@@ -473,14 +473,130 @@ TEST_CASE("Iteration: 1 entity - Matches ")
 		REQUIRE(BlocksIterated == 1);
 		REQUIRE(HandleMatches == 1);
 		REQUIRE(BlocksIterated == 1);
-		
-		
+
+
 	}
 	SECTION("Match one component - cant match") {
 
 		EntityHandle handle = ECS.CreateEntityBatched(PosOnly, 1)[0];
 
 		ECS.IterateBlocks(PosRotBigSearch, empty, [&](ArchetypeBlock & block) {
+			BlocksIterated++;
+			auto &ap = block.entities;//block.GetComponentArray<Position>();
+
+			for (int i = 0; i < block.last; i++)
+			{
+				EntitiesIterated++;
+
+				if (ap[i] == handle)
+				{
+					HandleMatches++;
+				}
+			}
+		});
+
+		REQUIRE(handle.id == 0);
+		REQUIRE(handle.generation == 1);
+		REQUIRE(ECS.BlockStorage.size() == 1);
+
+		//should not match anything
+		REQUIRE(BlocksIterated == 0);
+		REQUIRE(HandleMatches == 0);
+		REQUIRE(BlocksIterated == 0);
+	}
+}
+TEST_CASE("Iteration: 1 entity - Negative Queries ")
+	{
+		Archetype PosRotBig;
+		PosRotBig.AddComponent<Position>();
+		PosRotBig.AddComponent<Rotation>();
+		PosRotBig.AddComponent<BigComponent>();
+
+		Archetype PosOnly;
+		PosOnly.AddComponent<Position>();
+
+		Archetype RotOnly;
+		RotOnly.AddComponent<Rotation>();
+
+		ComponentList PositionSearch = PosOnly.componentlist;
+		ComponentList RotationSearch = RotOnly.componentlist;
+		ComponentList PosRotBigSearch = PosRotBig.componentlist;
+		ComponentList empty;
+
+		ECSWorld ECS;
+
+		int BlocksIterated = 0;
+		int EntitiesIterated = 0;
+		int HandleMatches = 0;
+
+	SECTION("Match one component - query against itself") {
+
+		EntityHandle handle = ECS.CreateEntityBatched(PosOnly, 1)[0];
+
+
+		//try to match against its own negative query. Should not match
+		ECS.IterateBlocks(PositionSearch, PositionSearch, [&](ArchetypeBlock & block) {
+			BlocksIterated++;
+			auto &ap = block.entities;//block.GetComponentArray<Position>();
+
+			for (int i = 0; i < block.last; i++)
+			{
+				EntitiesIterated++;
+
+				if (ap[i] == handle)
+				{
+					HandleMatches++;
+				}
+			}
+		});
+
+		REQUIRE(handle.id == 0);
+		REQUIRE(handle.generation == 1);
+		REQUIRE(ECS.BlockStorage.size() == 1);
+
+		//should not match anything
+		REQUIRE(BlocksIterated == 0);
+		REQUIRE(HandleMatches == 0);
+		REQUIRE(BlocksIterated == 0);
+	}
+
+	SECTION("Match one component - negative query on big") {
+
+		EntityHandle handle = ECS.CreateEntityBatched(PosRotBig, 1)[0];
+
+
+		// Should not match
+		ECS.IterateBlocks(PosRotBigSearch, RotationSearch, [&](ArchetypeBlock & block) {
+			BlocksIterated++;
+			auto &ap = block.entities;//block.GetComponentArray<Position>();
+
+			for (int i = 0; i < block.last; i++)
+			{
+				EntitiesIterated++;
+
+				if (ap[i] == handle)
+				{
+					HandleMatches++;
+				}
+			}
+		});
+
+		REQUIRE(handle.id == 0);
+		REQUIRE(handle.generation == 1);
+		REQUIRE(ECS.BlockStorage.size() == 1);
+
+		//should not match anything
+		REQUIRE(BlocksIterated == 0);
+		REQUIRE(HandleMatches == 0);
+		REQUIRE(BlocksIterated == 0);
+	}
+	SECTION("Match one component - big negaive query") {
+
+		EntityHandle handle = ECS.CreateEntityBatched(RotOnly, 1)[0];
+
+
+		// Should not match
+		ECS.IterateBlocks(RotationSearch, PosRotBigSearch, [&](ArchetypeBlock & block) {
 			BlocksIterated++;
 			auto &ap = block.entities;//block.GetComponentArray<Position>();
 

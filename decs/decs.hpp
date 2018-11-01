@@ -209,8 +209,9 @@ struct Archetype {
 
 	ComponentList componentlist;
 
+	static constexpr size_t ARRAY_SIZE = 4086;
 };
-constexpr size_t ARRAY_SIZE = 4086;
+
 
 
 struct ArchetypeComponentArray {
@@ -218,7 +219,7 @@ struct ArchetypeComponentArray {
 	Metatype metatype;
 
 	ArchetypeComponentArray(Metatype type) {
-		data = malloc(ARRAY_SIZE * type.size);
+		data = malloc(Archetype::ARRAY_SIZE * type.size);
 		metatype = type;
 	}
 
@@ -288,7 +289,7 @@ struct ArchetypeBlock {
 	}
 
 	bool checkSanity() {
-		for (int i = 0; i < ARRAY_SIZE; i++)
+		for (int i = 0; i < Archetype::ARRAY_SIZE; i++)
 		{
 			if (entities[i].generation != 1 && i < last)
 			{
@@ -398,7 +399,7 @@ struct ArchetypeBlock {
 	std::vector<ArchetypeComponentArray> componentArrays;
 
 	//handle array
-	EntityHandle entities[ARRAY_SIZE];
+	EntityHandle entities[Archetype::ARRAY_SIZE];
 
 	//max index that has an entity
 	uint16_t last{ 0 };
@@ -514,7 +515,7 @@ struct ArchetypeBlockStorage {
 
 	ArchetypeBlock * FindFreeBlock() {
 		//cached freeblock
-		if (freeblock != nullptr && freeblock->last < (ARRAY_SIZE - 1))
+		if (freeblock != nullptr && freeblock->last < (Archetype::ARRAY_SIZE - 1))
 		{
 			return freeblock;
 		}
@@ -523,7 +524,7 @@ struct ArchetypeBlockStorage {
 		//iterate linked list
 		while (ptr != nullptr)
 		{
-			if (ptr->last < (ARRAY_SIZE - 1))
+			if (ptr->last < (Archetype::ARRAY_SIZE - 1))
 			{
 				freeblock = ptr;
 				return ptr;
@@ -739,7 +740,7 @@ struct ECSWorld {
 		{
 			ArchetypeBlock * entityBlock = FindOrCreateBlockForArchetype(arc);
 
-			for (int i = 0; i <= ((ARRAY_SIZE) - entityBlock->last); i++) {
+			for (int i = 0; i <= ((Archetype::ARRAY_SIZE) - entityBlock->last); i++) {
 
 				if (amount_left <= 0)
 				{
@@ -833,7 +834,7 @@ struct ECSWorld {
 	{
 		const EntityStorage & et = Entities[entity.id];
 		//valid entity
-		return (et.generation == entity.generation && et.block != nullptr && et.block->last <= ARRAY_SIZE && et.block->last >= 0);
+		return (et.generation == entity.generation && et.block != nullptr && et.block->last <= Archetype::ARRAY_SIZE && et.block->last >= 0);
 
 	}
 
