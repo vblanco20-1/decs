@@ -315,53 +315,7 @@ struct ArchetypeBlock {
 
 		return TypedArchetypeComponentArray<C>();
 	}
-	/*
-	int Match(const ComponentList & Components)
-	{
-
-		int matches = 0;
-		for (auto c : Components.metatypes)
-		{
-			bool bFound = false;
-			for (auto a : componentArrays)
-			{
-				if (a.metatype.name_hash == c.name_hash)
-				{
-					bFound = true;
-				}
-			}
-			if (bFound)
-			{
-				matches++;
-			}
-
-		}
-		return matches;
-	}
-
-	bool ExactMatch(const ComponentList & Components) {
-		if (Components.cached_hash != myArch.componentlist.cached_hash) {
-			return false;
-		}
-		for (auto c : Components.metatypes)
-		{
-			bool bFound = false;
-			for (auto a : componentArrays)
-			{
-				if (a.metatype.name_hash != c.name_hash)
-				{
-					bFound = true;
-				}
-			}
-			if (!bFound)
-			{
-				return false;
-			}
-
-		}
-		return true;
-	}
-	*/
+	
 	uint16_t AddEntity(EntityHandle handle)
 	{
 		uint16_t pos = last;
