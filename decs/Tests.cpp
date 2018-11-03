@@ -472,10 +472,31 @@ TEST_CASE("Iteration: 1 entity - Queries ")
 		REQUIRE(ECS.BlockStorage.size() == 1);
 		REQUIRE(BlocksIterated == 1);
 		REQUIRE(HandleMatches == 1);
-		REQUIRE(BlocksIterated == 1);
+		REQUIRE(EntitiesIterated == 1);
 
 
 	}
+	SECTION("Match empty - cant match") {
+
+		//EntityHandle handle = ECS.CreateEntityBatched(PosOnly, 1)[0];
+
+		ECS.IterateBlocks(PosRotBigSearch, empty, [&](ArchetypeBlock & block) {
+			BlocksIterated++;
+			auto &ap = block.entities;//block.GetComponentArray<Position>();
+
+			for (int i = 0; i < block.last; i++)
+			{
+				EntitiesIterated++;
+			}
+		});
+		
+
+		//should not match anything
+		REQUIRE(BlocksIterated == 0);
+		REQUIRE(HandleMatches == 0);
+		REQUIRE(EntitiesIterated == 0);
+	}
+
 	SECTION("Match one component - cant match") {
 
 		EntityHandle handle = ECS.CreateEntityBatched(PosOnly, 1)[0];
@@ -502,7 +523,7 @@ TEST_CASE("Iteration: 1 entity - Queries ")
 		//should not match anything
 		REQUIRE(BlocksIterated == 0);
 		REQUIRE(HandleMatches == 0);
-		REQUIRE(BlocksIterated == 0);
+		REQUIRE(EntitiesIterated == 0);
 	}
 }
 TEST_CASE("Iteration: 1 entity - Negative Queries ")
@@ -557,7 +578,7 @@ TEST_CASE("Iteration: 1 entity - Negative Queries ")
 		//should not match anything
 		REQUIRE(BlocksIterated == 0);
 		REQUIRE(HandleMatches == 0);
-		REQUIRE(BlocksIterated == 0);
+		REQUIRE(EntitiesIterated == 0);
 	}
 
 	SECTION("Match one component - negative query on big") {
@@ -588,7 +609,7 @@ TEST_CASE("Iteration: 1 entity - Negative Queries ")
 		//should not match anything
 		REQUIRE(BlocksIterated == 0);
 		REQUIRE(HandleMatches == 0);
-		REQUIRE(BlocksIterated == 0);
+		REQUIRE(EntitiesIterated == 0);
 	}
 	SECTION("Match one component - big negaive query") {
 
@@ -618,6 +639,103 @@ TEST_CASE("Iteration: 1 entity - Negative Queries ")
 		//should not match anything
 		REQUIRE(BlocksIterated == 0);
 		REQUIRE(HandleMatches == 0);
+		REQUIRE(EntitiesIterated == 0);
+	}
+}
+
+TEST_CASE("Iteration: 1 full block - Queries ")
+{
+	Archetype PosRotBig;
+	PosRotBig.AddComponent<Position>();
+	PosRotBig.AddComponent<Rotation>();
+	PosRotBig.AddComponent<BigComponent>();
+
+	Archetype PosOnly;
+	PosOnly.AddComponent<Position>();
+
+	ComponentList PositionSearch = PosOnly.componentlist;
+	ComponentList PosRotBigSearch = PosRotBig.componentlist;
+	ComponentList empty;
+
+	ECSWorld ECS;
+
+	int BlocksIterated = 0;
+	int EntitiesIterated = 0;
+	int HandleMatches = 0;
+
+	SECTION("Match one block - basic") {
+
+		ECS.CreateEntityBatched(PosRotBig, PosRotBig.ARRAY_SIZE)[0];
+
+
+		ECS.IterateBlocks(PositionSearch, empty, [&](ArchetypeBlock & block) {
+			BlocksIterated++;
+			auto &ap = block.entities;//block.GetComponentArray<Position>();
+
+			for (int i = 0; i < block.last; i++)
+			{
+				EntitiesIterated++;
+
+				
+			}
+		});
+
+		
+		REQUIRE(ECS.BlockStorage.size() == 1);
+		REQUIRE(BlocksIterated == 1);		
+		REQUIRE(EntitiesIterated == PosRotBig.ARRAY_SIZE);
+
+	}
+	SECTION("Match one block - complex") {
+
+		ECS.CreateEntityBatched(PosRotBig, PosRotBig.ARRAY_SIZE)[0];
+
+
+		ECS.IterateBlocks(PosRotBigSearch, empty, [&](ArchetypeBlock & block) {
+			BlocksIterated++;
+			auto &ap = block.entities;//block.GetComponentArray<Position>();
+
+			for (int i = 0; i < block.last; i++)
+			{
+				EntitiesIterated++;
+
+
+			}
+		});
+
+
+		REQUIRE(ECS.BlockStorage.size() == 1);
+		REQUIRE(BlocksIterated == 1);
+		REQUIRE(EntitiesIterated == PosRotBig.ARRAY_SIZE);
+
+	}
+
+	SECTION("Match one component - cant match") {
+
+		EntityHandle handle = ECS.CreateEntityBatched(PosOnly, PosOnly.ARRAY_SIZE)[0];
+
+		ECS.IterateBlocks(PosRotBigSearch, empty, [&](ArchetypeBlock & block) {
+			BlocksIterated++;
+			auto &ap = block.entities;//block.GetComponentArray<Position>();
+
+			for (int i = 0; i < block.last; i++)
+			{
+				EntitiesIterated++;
+
+				if (ap[i] == handle)
+				{
+					HandleMatches++;
+				}
+			}
+		});
+
+		REQUIRE(handle.id == 0);
+		REQUIRE(handle.generation == 1);
+		REQUIRE(ECS.BlockStorage.size() == 1);
+
+		//should not match anything
 		REQUIRE(BlocksIterated == 0);
+		REQUIRE(HandleMatches == 0);
+		REQUIRE(EntitiesIterated == 0);
 	}
 }
