@@ -8,6 +8,9 @@
 #include <functional>
 #include <iostream>
 #include <chrono>
+#include "plf_colony.h"
+#include <cassert>
+
 using ComponentGUID = uint64_t;
 
 struct Metatype {
@@ -283,6 +286,11 @@ struct ArchetypeBlock {
 			componentArrays.push_back(newArray);
 		}
 
+		//prev = nullptr;
+		//
+		//next = nullptr;
+
+
 		myArch = arch;
 		myArch.componentlist.BuildHash();
 		last = 0;
@@ -317,17 +325,19 @@ struct ArchetypeBlock {
 		return TypedArchetypeComponentArray<C>();
 	}
 	
-	uint16_t AddEntity(EntityHandle handle)
+	virtual uint16_t AddEntity(EntityHandle handle)
 	{
 		uint16_t pos = last;
+		assert(pos < myArch.ARRAY_SIZE);
+
 		entities[pos] = handle;
 		last++;
-		entities[last].generation = 5;
+		//entities[last].generation = 7;
 		return pos;
 	}
 
 	//copy a entity from a different block into this one
-	void CopyEntityFromBlock(uint64_t destEntity, uint64_t srcEntity, ArchetypeBlock * otherblock)
+	virtual void CopyEntityFromBlock(uint64_t destEntity, uint64_t srcEntity, ArchetypeBlock * otherblock)
 	{
 		//copy components to the index
 		for (auto &csrc : otherblock->componentArrays)
@@ -352,7 +362,7 @@ struct ArchetypeBlock {
 		}
 	}
 	//returns true if the block got deleted
-	bool RemoveAndSwap(uint64_t idx) {
+	virtual bool RemoveAndSwap(uint64_t idx) {
 
 		//shrink
 		last--;
@@ -392,21 +402,21 @@ struct ArchetypeBlock {
 		//	}
 		//}
 	}
-	EntityHandle GetLastEntity() {
+	virtual EntityHandle GetLastEntity() {
 		return entities[last - 1];
 	}
 
 	std::vector<ArchetypeComponentArray> componentArrays;
 
 	//handle array
-	EntityHandle entities[Archetype::ARRAY_SIZE];
+	std::array<EntityHandle, Archetype::ARRAY_SIZE> entities;
 
 	//max index that has an entity
 	uint16_t last{ 0 };
 
 	//linked list
-	ArchetypeBlock * prev{ nullptr };
-	ArchetypeBlock * next{ nullptr };
+	//ArchetypeBlock * prev;
+	//ArchetypeBlock * next;
 
 	ArchetypeBlockStorage * storage;
 };
@@ -419,8 +429,8 @@ struct ArchetypeBlockStorage {
 	int nblocks;
 	ArchetypeBlockStorage(const Archetype & arch) {
 		myArch = arch;
-		last = nullptr;
-		first = nullptr;
+		//last = nullptr;
+		//first = nullptr;
 		nblocks = 0;
 		//CreateNewBlock();
 		//last = first;
@@ -429,30 +439,35 @@ struct ArchetypeBlockStorage {
 	}
 
 	~ArchetypeBlockStorage() {
-		ArchetypeBlock * ptr = first;
-		//iterate linked list
-		while (ptr != nullptr)
-		{
-			auto d = ptr;
-			ptr = ptr->next;
-			delete d;			
-		}
+		//ArchetypeBlock * ptr = first;
+		////iterate linked list
+		//while (ptr != nullptr)
+		//{
+		//	auto d = ptr;
+		//	ptr = ptr->next;
+		//	delete d;			
+		//}
 	}
 	ArchetypeBlock * CreateNewBlock() {
 		nblocks++;
-		ArchetypeBlock * blk = new ArchetypeBlock(myArch);
-		blk->next = nullptr;
+
+		auto b = block_colony.insert(myArch);
+
+		ArchetypeBlock * blk = &(*b);
+		//blk->next = nullptr;
 		blk->storage = this;
-		blk->prev = last;
-		if (last != nullptr)
-		{
-			last->next = blk;
-		}
-		if (first == nullptr)
-		{
-			first = blk;
-		}
-		last = blk;
+		
+		//blk->prev = last;
+		//printf(" c: %p \n", blk);
+		//if (last != nullptr)
+		//{
+		//	last->next = blk;
+		//}
+		//if (first == nullptr)
+		//{
+		//	first = blk;
+		//}
+		//last = blk;
 		return blk;
 	}
 
@@ -462,85 +477,113 @@ struct ArchetypeBlockStorage {
 		{
 			freeblock = nullptr;
 		}
-		if (first == nullptr)
-		{
-			return;
-		}
+		//if (first == nullptr)
+		//{
+		//	return;
+		//}
 		nblocks--;
-		ArchetypeBlock * ptr = first;
-		//iterate linked list
-		while (ptr != nullptr)
+		//ArchetypeBlock * ptr = first;
+		for (auto it = block_colony.begin(); it != block_colony.end(); ++it)
 		{
-			if (ptr == blk)
+			//for (auto &it : block_colony)
+			//{
+			if (&(*it) == blk)
 			{
-				ArchetypeBlock * prev = ptr->prev;
-				ArchetypeBlock * next = ptr->next;
-				//check that the previus pointer is blid (list head)
-				if (prev != nullptr)
-				{
-					prev->next = next;
-				}
-				else
-				{
-					first = next;
-				}
-				//check that the next pointer is blid (list end)
-				if (next != nullptr)
-				{
-					next->prev = prev;
-				}
-				else
-				{
-					last = prev;
-				}
-				delete ptr;
+				it->last = 9999999;
+				block_colony.erase(it);
 				return;
 			}
-			else
-			{
-				ptr = ptr->next;
-			}
 		}
+		//iterate linked list
+		//while (ptr != nullptr)
+		//{
+		//	printf(" blk: %p %p %p \n", ptr,ptr->prev, ptr->next);
+		//	if (ptr == blk)
+		//	{
+		//		ArchetypeBlock * prev = ptr->prev;
+		//		ArchetypeBlock * next = ptr->next;
+		//
+		//		
+		//		//check that the previus pointer is blid (list head)
+		//		if (prev >= (void*)20) //weird error
+		//		{
+		//			
+		//			prev->next = next;
+		//		}
+		//		else
+		//		{
+		//			first = next;
+		//		}
+		//		//check that the next pointer is blid (list end)
+		//		if (next != nullptr)
+		//		{
+		//			printf(" a: %p \n", prev);
+		//			next->prev = prev;
+		//		}
+		//		else
+		//		{
+		//			last = prev;
+		//		}
+		//		delete ptr;
+		//		return;
+		//	}
+		//	else
+		//	{
+		//		ptr = ptr->next;
+		//	}
+		//}
 	}
 	template<typename F>
 	void Iterate(F&&f) {
-		ArchetypeBlock * ptr = first;
-		//iterate linked list
-		while (ptr != nullptr)
+
+		for (auto it = block_colony.begin(); it != block_colony.end(); ++it)
 		{
-			f(*ptr);
-			ptr = ptr->next;
+			f((*it));
 		}
+
+		//ArchetypeBlock * ptr = first;
+		////iterate linked list
+		//while (ptr != nullptr)
+		//{
+		//	f(*ptr);
+		//	ptr = ptr->next;
+		//}
 	}
 
 	ArchetypeBlock * FindFreeBlock() {
 		//cached freeblock
-		if (freeblock != nullptr && freeblock->last < (Archetype::ARRAY_SIZE - 1))
-		{
-			return freeblock;
-		}
-
-		ArchetypeBlock * ptr = first;
-		//iterate linked list
-		while (ptr != nullptr)
-		{
-			if (ptr->last < (Archetype::ARRAY_SIZE - 1))
+			if (freeblock != nullptr && freeblock->last < (Archetype::ARRAY_SIZE - 1))
 			{
-				freeblock = ptr;
-				return ptr;
+				return freeblock;
 			}
 
-			ptr = ptr->next;
+		ArchetypeBlock * ptr = nullptr;
+		//iterate linked list
+
+		for (auto & b : block_colony)
+		{
+			ptr = &b;
+			
+				if (ptr->last < (Archetype::ARRAY_SIZE - 1))
+				{
+					freeblock = ptr;
+					return ptr;
+				}
+
+				//ptr = ptr->next;
+			
 		}
 
-		freeblock = ptr;
+		freeblock = nullptr;
 
-		return ptr;
+		return nullptr;
 	}
 
 	ArchetypeBlock * freeblock{ nullptr };
-	ArchetypeBlock * first{ nullptr };
-	ArchetypeBlock * last{ nullptr };
+	//ArchetypeBlock * first{ nullptr };
+	//ArchetypeBlock * last{ nullptr };
+
+	plf::colony<ArchetypeBlock> block_colony;
 
 	static void DeleteBlock(ArchetypeBlockStorage * store, ArchetypeBlock * blk)
 	{

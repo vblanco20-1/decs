@@ -1,17 +1,27 @@
 #include "decs.hpp"
 
 
-#define CATCH_CONFIG_MAIN
-#include "catch.hpp"
+BaseComponent::IDCounter BaseComponent::family_counter_ = 1;
 
 using namespace std;
 //using namespace decs;
 
-/*
+
 
 
 int main()
 {
+	// Get current flag  
+	//int tmpFlag = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
+	//
+	//// Turn on leak-checking bit.  
+	//tmpFlag |= _CRTDBG_LEAK_CHECK_DF;
+	//
+	//// Turn off CRT block checking bit.  
+	//tmpFlag &= ~_CRTDBG_CHECK_CRT_DF;
+	//
+	//// Set flag to the new value.  
+	//_CrtSetDbgFlag(tmpFlag);
 	for (int r = 0; r < 100; r++)
 	{
 
@@ -180,5 +190,5 @@ int main()
 
 	
 }
-*/
+
 
