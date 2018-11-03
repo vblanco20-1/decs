@@ -171,6 +171,7 @@ struct Archetype {
 				if (a.name_hash == c.name_hash)
 				{
 					bFound = true;
+					break;
 				}
 			}
 			if (bFound)
@@ -189,6 +190,10 @@ struct Archetype {
 		if (Components.metatypes.size() != componentlist.metatypes.size())
 		{
 			return false;
+		}
+		else if (Components.metatypes.size() == 0)
+		{
+			return true;
 		}
 		for (auto c : Components.metatypes)
 		{
@@ -212,7 +217,7 @@ struct Archetype {
 
 	ComponentList componentlist;
 
-	static constexpr size_t ARRAY_SIZE = 4086;
+	static constexpr size_t ARRAY_SIZE = 4096;
 };
 
 
@@ -325,7 +330,7 @@ struct ArchetypeBlock {
 		return TypedArchetypeComponentArray<C>();
 	}
 	
-	virtual uint16_t AddEntity(EntityHandle handle)
+	uint16_t AddEntity(EntityHandle handle)
 	{
 		uint16_t pos = last;
 		assert(pos < myArch.ARRAY_SIZE);
@@ -337,7 +342,7 @@ struct ArchetypeBlock {
 	}
 
 	//copy a entity from a different block into this one
-	virtual void CopyEntityFromBlock(uint64_t destEntity, uint64_t srcEntity, ArchetypeBlock * otherblock)
+	void CopyEntityFromBlock(uint64_t destEntity, uint64_t srcEntity, ArchetypeBlock * otherblock)
 	{
 		//copy components to the index
 		for (auto &csrc : otherblock->componentArrays)
@@ -362,7 +367,7 @@ struct ArchetypeBlock {
 		}
 	}
 	//returns true if the block got deleted
-	virtual bool RemoveAndSwap(uint64_t idx) {
+	bool RemoveAndSwap(uint64_t idx) {
 
 		//shrink
 		last--;
@@ -371,7 +376,7 @@ struct ArchetypeBlock {
 		if (last <= 0)
 		{
 			//block emptied
-			//ArchetypeBlockStorage::DeleteBlock(storage, this);
+			
 			return true;
 		}
 		if (idx >= last)
@@ -402,7 +407,7 @@ struct ArchetypeBlock {
 		//	}
 		//}
 	}
-	virtual EntityHandle GetLastEntity() {
+	EntityHandle GetLastEntity() {
 		return entities[last - 1];
 	}
 
@@ -457,84 +462,33 @@ struct ArchetypeBlockStorage {
 		//blk->next = nullptr;
 		blk->storage = this;
 		
-		//blk->prev = last;
-		//printf(" c: %p \n", blk);
-		//if (last != nullptr)
-		//{
-		//	last->next = blk;
-		//}
-		//if (first == nullptr)
-		//{
-		//	first = blk;
-		//}
-		//last = blk;
+		
 		return blk;
 	}
 
 
 	void DeleteBlock(ArchetypeBlock * blk) {
-		if (blk == freeblock)
-		{
-			freeblock = nullptr;
-		}
-		//if (first == nullptr)
-		//{
-		//	return;
-		//}
+		
+		freeblock = nullptr;
+		
+		
 		nblocks--;
-		//ArchetypeBlock * ptr = first;
+		
 		for (auto it = block_colony.begin(); it != block_colony.end(); ++it)
 		{
 			//for (auto &it : block_colony)
 			//{
 			if (&(*it) == blk)
 			{
-				it->last = 9999999;
+				it->last = 0;
 				block_colony.erase(it);
 				return;
 			}
 		}
-		//iterate linked list
-		//while (ptr != nullptr)
-		//{
-		//	printf(" blk: %p %p %p \n", ptr,ptr->prev, ptr->next);
-		//	if (ptr == blk)
-		//	{
-		//		ArchetypeBlock * prev = ptr->prev;
-		//		ArchetypeBlock * next = ptr->next;
-		//
-		//		
-		//		//check that the previus pointer is blid (list head)
-		//		if (prev >= (void*)20) //weird error
-		//		{
-		//			
-		//			prev->next = next;
-		//		}
-		//		else
-		//		{
-		//			first = next;
-		//		}
-		//		//check that the next pointer is blid (list end)
-		//		if (next != nullptr)
-		//		{
-		//			printf(" a: %p \n", prev);
-		//			next->prev = prev;
-		//		}
-		//		else
-		//		{
-		//			last = prev;
-		//		}
-		//		delete ptr;
-		//		return;
-		//	}
-		//	else
-		//	{
-		//		ptr = ptr->next;
-		//	}
-		//}
+		
 	}
 	template<typename F>
-	void Iterate(F&&f) {
+	void Iterate(F&& f) {
 
 		for (auto it = block_colony.begin(); it != block_colony.end(); ++it)
 		{
@@ -620,6 +574,36 @@ struct Position : public Component<Position> {
 	float x, y, z;
 };
 
+struct C1 : public Component<C1> {
+
+	C1() = default;
+	C1(const C1 & other) {
+		x = other.x;
+		y = other.y;
+		z = other.z;
+	}
+	float x, y, z;
+};
+struct C2 : public Component<C2> {
+
+	C2() = default;
+	C2(const C2 & other) {
+		x = other.x;
+		y = other.y;
+		z = other.z;
+	}
+	float x, y, z;
+};
+struct C3 : public Component<C3> {
+
+	C3() = default;
+	C3(const C3 & other) {
+		x = other.x;
+		y = other.y;
+		z = other.z;
+	}
+	float x, y, z;
+};
 //};
 struct Rotation : public Component<Rotation> {
 	Rotation() = default;
@@ -662,7 +646,7 @@ struct ECSWorld {
 
 
 	template<typename F>
-	void IterateBlocks(const ComponentList &AllOfList, const ComponentList& NoneOfList, F&&f) {
+	void IterateBlocks(const ComponentList &AllOfList, const ComponentList& NoneOfList, F && f) {
 
 		for (ArchetypeBlockStorage & b : BlockStorage)
 		{
@@ -676,7 +660,17 @@ struct ECSWorld {
 			}
 		}
 	}
+	template<typename F>
+	void IterateBlocks(const ComponentList &AllOfList, F && f) {
 
+		for (ArchetypeBlockStorage & b : BlockStorage)
+		{
+			if (b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
+			{
+				b.Iterate(f);
+			}
+		}
+	}
 	bool ValidateAll() {
 		bool valid = true;
 		for (ArchetypeBlockStorage & b : BlockStorage)
@@ -713,33 +707,7 @@ struct ECSWorld {
 
 	ArchetypeBlock * FindOrCreateBlockForArchetype(const Archetype & arc)
 	{
-		//ArchetypeBlock * entityBlock = nullptr;
-		////find the free block
-		////arc.componentlist.BuildHash();
-		//const size_t numComponents = arc.componentlist.metatypes.size();
-		//for (ArchetypeBlock & b : Blocks)
-		//{
-		//	//block needs to have the same amount of components, and match all of them
-		//	if (b.componentArrays.size() == numComponents && b.ExactMatch(arc.componentlist))//b.Match(arc.componentlist) == numComponents)
-		//	{
-		//		//block cant be filled
-		//		if (b.last < ARRAY_SIZE - 1)
-		//		{
-		//			entityBlock = &b;
-		//			break;
-		//		}
-		//
-		//	}
-		//}
-		////block not found, create a new one
-		//if (entityBlock == nullptr)
-		//{
-		//	entityBlock = CreateBlock(arc);
-		//}
-		//
-		//return entityBlock;
-
-		ArchetypeBlock * entityBlock = nullptr;
+			ArchetypeBlock * entityBlock = nullptr;
 		//find the free block
 		//arc.componentlist.BuildHash();
 		const size_t numComponents = arc.componentlist.metatypes.size();
@@ -756,7 +724,7 @@ struct ECSWorld {
 				{
 					entityBlock = b->CreateNewBlock();
 					break;
-					//return entityBlock;
+					
 				}
 			}
 		}
@@ -890,8 +858,7 @@ struct ECSWorld {
 			ArchetypeBlock * oldBlock = et.block;
 
 			ArchetypeBlock * newBlock = FindOrCreateBlockForArchetype(arc);
-			//oldBlock->checkSanity();
-			//newBlock->checkSanity();
+		
 			//create entity in the new block
 			auto pos = newBlock->AddEntity(entity);
 			auto oldpos = et.blockindex;
@@ -901,10 +868,7 @@ struct ECSWorld {
 			//clear old entity slot
 			EntityHandle SwapEntity = oldBlock->GetLastEntity();
 
-			//if (pos > oldBlock->last)
-			//{
-			//	std::cout << " what";
-			//}
+			
 			Entities[SwapEntity.id].blockindex = oldpos;
 
 
