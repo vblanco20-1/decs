@@ -9,8 +9,31 @@ BaseComponent::IDCounter BaseComponent::family_counter_ = 1;
 #define CATCH_CONFIG_RUNNER
 #include "catch.hpp"
 
+Archetype Arc_Pos_Rot;
+Archetype Arc_Position;
+Archetype Arc_Pos_Rot_Big;
+Archetype Arc_BigComponent;
+Archetype Arc_Rotation;
+
 int main(int argc, char* argv[]) {
 	// global setup...
+
+	//initialize some common archetypes
+	Arc_Pos_Rot.AddComponent<Position>();
+	Arc_Pos_Rot.AddComponent<Rotation>();	
+
+	Arc_Pos_Rot_Big.AddComponent<Position>();
+	Arc_Pos_Rot_Big.AddComponent<Rotation>();
+	Arc_Pos_Rot_Big.AddComponent<BigComponent>();
+
+	Arc_Position.AddComponent<Position>();
+
+	Arc_BigComponent.AddComponent<BigComponent>();
+
+	Arc_Rotation.AddComponent<Rotation>();
+
+
+
 
 	int result = Catch::Session().run(argc, argv);
 
@@ -27,7 +50,7 @@ TEST_CASE("Archetype: 2 Components Added - Normal") {
 	PosRot.AddComponent<Rotation>();
 
 	//check size is 2
-	REQUIRE(PosRot.componentlist.metatypes.size() == 2);
+	REQUIRE(Arc_Pos_Rot.componentlist.metatypes.size() == 2);
 }
 TEST_CASE("Archetype: 2 Components Added - Same Component twice") {
 
@@ -98,26 +121,14 @@ TEST_CASE("Archetype: 2 Components Added - Repeated remove") {
 }
 
 TEST_CASE("Entity Creation: 1 Entity") {
-	//archetype with posrot
-	Archetype PosRot;
-	PosRot.AddComponent<Position>();
-	PosRot.AddComponent<Rotation>();
 
-	Archetype PosOnly;
-	PosOnly.AddComponent<Position>();
-	
-
-	Archetype PosRotBig;
-	PosRotBig.AddComponent<Position>();
-	PosRotBig.AddComponent<Rotation>();
-	PosRotBig.AddComponent<BigComponent>();
 
 	ECSWorld ECS;
 	
 
 	SECTION("Adding Pos + Rot (2 Components)") {
 
-		EntityHandle handle = ECS.CreateEntity(PosRot);
+		EntityHandle handle = ECS.CreateEntity(Arc_Pos_Rot);
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -127,7 +138,7 @@ TEST_CASE("Entity Creation: 1 Entity") {
 		//REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
 	SECTION("Adding Pos + Rot + Big(3 Components)") {
-		EntityHandle handle = ECS.CreateEntity(PosRotBig);
+		EntityHandle handle = ECS.CreateEntity(Arc_Pos_Rot_Big);
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -137,7 +148,7 @@ TEST_CASE("Entity Creation: 1 Entity") {
 		//REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
 	SECTION("Adding Pos (1 Components)") {
-		EntityHandle handle = ECS.CreateEntity(PosOnly);
+		EntityHandle handle = ECS.CreateEntity(Arc_Position);
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -151,26 +162,14 @@ TEST_CASE("Entity Creation: 1 Entity") {
 
 
 TEST_CASE("Entity Creation: 1 Entity - Batched") {
-	//archetype with posrot
-	Archetype PosRot;
-	PosRot.AddComponent<Position>();
-	PosRot.AddComponent<Rotation>();
-
-	Archetype PosOnly;
-	PosOnly.AddComponent<Position>();
-
-
-	Archetype PosRotBig;
-	PosRotBig.AddComponent<Position>();
-	PosRotBig.AddComponent<Rotation>();
-	PosRotBig.AddComponent<BigComponent>();
+	
 
 	ECSWorld ECS;
 	
 
 	SECTION("Adding Pos + Rot (2 Components)") {
 
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, 1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Pos_Rot, 1)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -185,7 +184,7 @@ TEST_CASE("Entity Creation: 1 Entity - Batched") {
 		//REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
 	SECTION("Adding Pos + Rot + Big(3 Components)") {
-		EntityHandle handle = ECS.CreateEntityBatched(PosRotBig, 1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Pos_Rot_Big, 1)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -200,7 +199,7 @@ TEST_CASE("Entity Creation: 1 Entity - Batched") {
 		//REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
 	SECTION("Adding Pos (1 Components)") {
-		EntityHandle handle = ECS.CreateEntityBatched(PosOnly, 1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Position, 1)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -218,26 +217,14 @@ TEST_CASE("Entity Creation: 1 Entity - Batched") {
 
 
 TEST_CASE("Entity Creation: 1 Maxed Entity Block - Batched") {
-	//archetype with posrot
-	Archetype PosRot;
-	PosRot.AddComponent<Position>();
-	PosRot.AddComponent<Rotation>();
-
-	Archetype PosOnly;
-	PosOnly.AddComponent<Position>();
-
-
-	Archetype PosRotBig;
-	PosRotBig.AddComponent<Position>();
-	PosRotBig.AddComponent<Rotation>();
-	PosRotBig.AddComponent<BigComponent>();
+	
 
 	ECSWorld ECS;
 	
 
 	SECTION("Adding Pos + Rot (2 Components)") {
 
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, Archetype::ARRAY_SIZE)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Pos_Rot, Archetype::ARRAY_SIZE)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -252,7 +239,7 @@ TEST_CASE("Entity Creation: 1 Maxed Entity Block - Batched") {
 		//REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
 	SECTION("Adding Pos + Rot + Big(3 Components)") {
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, Archetype::ARRAY_SIZE)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Pos_Rot, Archetype::ARRAY_SIZE)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -268,7 +255,7 @@ TEST_CASE("Entity Creation: 1 Maxed Entity Block - Batched") {
 		//REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
 	SECTION("Adding Pos (1 Components)") {
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, Archetype::ARRAY_SIZE)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Pos_Rot, Archetype::ARRAY_SIZE)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -287,26 +274,14 @@ TEST_CASE("Entity Creation: 1 Maxed Entity Block - Batched") {
 
 
 TEST_CASE("Entity Creation: 1 Maxed Entity Block + 1 - Batched") {
-	//archetype with posrot
-	Archetype PosRot;
-	PosRot.AddComponent<Position>();
-	PosRot.AddComponent<Rotation>();
-
-	Archetype PosOnly;
-	PosOnly.AddComponent<Position>();
-
-
-	Archetype PosRotBig;
-	PosRotBig.AddComponent<Position>();
-	PosRotBig.AddComponent<Rotation>();
-	PosRotBig.AddComponent<BigComponent>();
+	
 
 	ECSWorld ECS;
 	
 
 	SECTION("Adding Pos + Rot (2 Components)") {
 
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, PosRot.ARRAY_SIZE +1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Pos_Rot, Arc_Pos_Rot.ARRAY_SIZE +1)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -321,7 +296,7 @@ TEST_CASE("Entity Creation: 1 Maxed Entity Block + 1 - Batched") {
 		//REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
 	SECTION("Adding Pos + Rot + Big(3 Components)") {
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, PosRot.ARRAY_SIZE +1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Pos_Rot_Big, Arc_Pos_Rot_Big.ARRAY_SIZE +1)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -337,7 +312,7 @@ TEST_CASE("Entity Creation: 1 Maxed Entity Block + 1 - Batched") {
 		//REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
 	SECTION("Adding Pos (1 Components)") {
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, PosRot.ARRAY_SIZE +1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Position, Arc_Position.ARRAY_SIZE +1)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -356,26 +331,13 @@ TEST_CASE("Entity Creation: 1 Maxed Entity Block + 1 - Batched") {
 
 
 TEST_CASE("Entity Creation: 1 Million entities - Batched") {
-	//archetype with posrot
-	Archetype PosRot;
-	PosRot.AddComponent<Position>();
-	PosRot.AddComponent<Rotation>();
-
-	Archetype PosOnly;
-	PosOnly.AddComponent<Position>();
-
-
-	Archetype PosRotBig;
-	PosRotBig.AddComponent<Position>();
-	PosRotBig.AddComponent<Rotation>();
-	PosRotBig.AddComponent<BigComponent>();
-
+	
 	ECSWorld ECS;
 	
 
 	SECTION("Adding Pos + Rot (2 Components)") {
 
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot,  1000000)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Pos_Rot,  1000000)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -391,7 +353,7 @@ TEST_CASE("Entity Creation: 1 Million entities - Batched") {
 		//REQUIRE(ECS.ValidateAll());
 	}
 	SECTION("Adding Pos + Rot + Big(3 Components)") {
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, 1000000)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Pos_Rot_Big, 1000000)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -408,7 +370,7 @@ TEST_CASE("Entity Creation: 1 Million entities - Batched") {
 		//REQUIRE(ECS.ValidateAll());
 	}
 	SECTION("Adding Pos (1 Components)") {
-		EntityHandle handle = ECS.CreateEntityBatched(PosRot, 1000000)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Pos_Rot, 1000000)[0];
 
 		REQUIRE(handle.id == 0);
 		REQUIRE(handle.generation == 1);
@@ -428,16 +390,10 @@ TEST_CASE("Entity Creation: 1 Million entities - Batched") {
 
 TEST_CASE("Iteration: 1 entity - Queries ")
 {
-	Archetype PosRotBig;
-	PosRotBig.AddComponent<Position>();
-	PosRotBig.AddComponent<Rotation>();
-	PosRotBig.AddComponent<BigComponent>();
+	
 
-	Archetype PosOnly;
-	PosOnly.AddComponent<Position>();
-
-	ComponentList PositionSearch = PosOnly.componentlist;
-	ComponentList PosRotBigSearch = PosRotBig.componentlist;
+	ComponentList PositionSearch = Arc_Position.componentlist;
+	ComponentList PosRotBigSearch = Arc_Pos_Rot_Big.componentlist;
 	ComponentList empty;
 
 	ECSWorld ECS;
@@ -448,7 +404,7 @@ TEST_CASE("Iteration: 1 entity - Queries ")
 
 	SECTION("Match one component - basic") {
 
-		EntityHandle handle = ECS.CreateEntityBatched(PosRotBig, 1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Pos_Rot_Big, 1)[0];
 
 
 		ECS.IterateBlocks(PositionSearch, empty, [&](ArchetypeBlock & block) {
@@ -498,7 +454,7 @@ TEST_CASE("Iteration: 1 entity - Queries ")
 
 	SECTION("Match one component - cant match") {
 
-		EntityHandle handle = ECS.CreateEntityBatched(PosOnly, 1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Position, 1)[0];
 
 		ECS.IterateBlocks(PosRotBigSearch, empty, [&](ArchetypeBlock & block) {
 			BlocksIterated++;
@@ -527,20 +483,11 @@ TEST_CASE("Iteration: 1 entity - Queries ")
 }
 TEST_CASE("Iteration: 1 entity - Negative Queries ")
 	{
-		Archetype PosRotBig;
-		PosRotBig.AddComponent<Position>();
-		PosRotBig.AddComponent<Rotation>();
-		PosRotBig.AddComponent<BigComponent>();
+		
 
-		Archetype PosOnly;
-		PosOnly.AddComponent<Position>();
-
-		Archetype RotOnly;
-		RotOnly.AddComponent<Rotation>();
-
-		ComponentList PositionSearch = PosOnly.componentlist;
-		ComponentList RotationSearch = RotOnly.componentlist;
-		ComponentList PosRotBigSearch = PosRotBig.componentlist;
+		ComponentList PositionSearch = Arc_Position.componentlist;
+		ComponentList RotationSearch = Arc_Rotation.componentlist;
+		ComponentList PosRotBigSearch = Arc_Pos_Rot_Big.componentlist;
 		ComponentList empty;
 
 		ECSWorld ECS;
@@ -551,7 +498,7 @@ TEST_CASE("Iteration: 1 entity - Negative Queries ")
 
 	SECTION("Match one component - query against itself") {
 
-		EntityHandle handle = ECS.CreateEntityBatched(PosOnly, 1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Position, 1)[0];
 
 
 		//try to match against its own negative query. Should not match
@@ -582,7 +529,7 @@ TEST_CASE("Iteration: 1 entity - Negative Queries ")
 
 	SECTION("Match one component - negative query on big") {
 
-		EntityHandle handle = ECS.CreateEntityBatched(PosRotBig, 1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Pos_Rot_Big, 1)[0];
 
 
 		// Should not match
@@ -612,7 +559,7 @@ TEST_CASE("Iteration: 1 entity - Negative Queries ")
 	}
 	SECTION("Match one component - big negaive query") {
 
-		EntityHandle handle = ECS.CreateEntityBatched(RotOnly, 1)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Rotation, 1)[0];
 
 
 		// Should not match
@@ -644,16 +591,10 @@ TEST_CASE("Iteration: 1 entity - Negative Queries ")
 
 TEST_CASE("Iteration: 1 full block - Queries ")
 {
-	Archetype PosRotBig;
-	PosRotBig.AddComponent<Position>();
-	PosRotBig.AddComponent<Rotation>();
-	PosRotBig.AddComponent<BigComponent>();
+	
 
-	Archetype PosOnly;
-	PosOnly.AddComponent<Position>();
-
-	ComponentList PositionSearch = PosOnly.componentlist;
-	ComponentList PosRotBigSearch = PosRotBig.componentlist;
+	ComponentList PositionSearch = Arc_Position.componentlist;
+	ComponentList PosRotBigSearch = Arc_Pos_Rot_Big.componentlist;
 	ComponentList empty;
 
 	ECSWorld ECS;
@@ -664,7 +605,7 @@ TEST_CASE("Iteration: 1 full block - Queries ")
 
 	SECTION("Match one block - basic") {
 
-		ECS.CreateEntityBatched(PosRotBig, PosRotBig.ARRAY_SIZE)[0];
+		ECS.CreateEntityBatched(Arc_Pos_Rot_Big, Arc_Pos_Rot_Big.ARRAY_SIZE)[0];
 
 
 		ECS.IterateBlocks(PositionSearch, empty, [&](ArchetypeBlock & block) {
@@ -682,12 +623,12 @@ TEST_CASE("Iteration: 1 full block - Queries ")
 		
 		REQUIRE(ECS.BlockStorage.size() == 1);
 		REQUIRE(BlocksIterated == 1);		
-		REQUIRE(EntitiesIterated == PosRotBig.ARRAY_SIZE);
+		REQUIRE(EntitiesIterated == Arc_Pos_Rot_Big.ARRAY_SIZE);
 
 	}
 	SECTION("Match one block - complex") {
 
-		ECS.CreateEntityBatched(PosRotBig, PosRotBig.ARRAY_SIZE)[0];
+		ECS.CreateEntityBatched(Arc_Pos_Rot_Big, Arc_Pos_Rot_Big.ARRAY_SIZE)[0];
 
 
 		ECS.IterateBlocks(PosRotBigSearch, empty, [&](ArchetypeBlock & block) {
@@ -705,13 +646,13 @@ TEST_CASE("Iteration: 1 full block - Queries ")
 
 		REQUIRE(ECS.BlockStorage.size() == 1);
 		REQUIRE(BlocksIterated == 1);
-		REQUIRE(EntitiesIterated == PosRotBig.ARRAY_SIZE);
+		REQUIRE(EntitiesIterated == Arc_Pos_Rot_Big.ARRAY_SIZE);
 
 	}
 
 	SECTION("Match one component - cant match") {
 
-		EntityHandle handle = ECS.CreateEntityBatched(PosOnly, PosOnly.ARRAY_SIZE)[0];
+		EntityHandle handle = ECS.CreateEntityBatched(Arc_Position, Arc_Position.ARRAY_SIZE)[0];
 
 		ECS.IterateBlocks(PosRotBigSearch, empty, [&](ArchetypeBlock & block) {
 			BlocksIterated++;
