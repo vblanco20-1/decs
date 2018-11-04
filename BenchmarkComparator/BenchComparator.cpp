@@ -29,7 +29,7 @@ void Print_Comparaision(double Entt, double Decs) {
 	cout << "Ratio is : " << Decs / Entt << "x" << endl;
 	cout << "---------------------------------------------------" << endl;
 }
-void Compare_Creation()
+void Compare_CreationDeletion()
 {
 	ECSWorld V_ECS;
 	V_ECS.BlockStorage.reserve(100);
@@ -45,12 +45,32 @@ void Compare_Creation()
 	}
 	double Entt_creation = tim.elapsed();
 	
-	V_ECS.CreateEntityBatched(EmptyArchetype, 1000000L);
+	auto ets = V_ECS.CreateEntityBatched(EmptyArchetype, 1000000L);
 	
 	double Decs_creation = tim.elapsed();
 	
 	Print_Comparaision(Entt_creation, Decs_creation);
+
+
+	std::cout << "Deleting 1.000.000 entities-------------------------------" << std::endl;
+
+	tim.elapsed();
+
+	Entt_ECS.each( [&](auto e) {
+		Entt_ECS.destroy(e);
+	});
+	Entt_creation = tim.elapsed();
+
+	for (auto e : ets)
+	{
+		V_ECS.DeleteEntity(e);
+	}
+	Decs_creation = tim.elapsed();
+	Print_Comparaision(Entt_creation, Decs_creation);
 }
+
+
+
 
 void Compare_ComponentAdd()
 {
@@ -179,16 +199,13 @@ void Compare_SimpleIteration()
 	V_ECS.IterateBlocks(PosOnly.componentlist, empty.componentlist, [&](ArchetypeBlock & block) {
 		
 		auto ap = block.GetComponentArray<Position>();
-		//auto ar = block.GetComponentArray<Rotation>();
+		
 		for (int i = 0; i < block.last; i++)
 		{
 			p++;
 			ap.Get(i).x = uniform_dist1(rng1);
 			ap.Get(i).y = p;
-			
-			//compares2 += uniform_dist1(rng1);
-		}
-		
+		}		
 	});
 
 	
@@ -385,17 +402,19 @@ void Compare_Iteration_Pathological()
 
 int main()
 {
-	for (int i = 0; i < 10; i++)
+	for (int i = 0; i < 100; i++)
 	{
+		//Compare_Creation();
 	
 	cout << "===========Comparing Decs against Entt ================" << endl << endl;
-	Compare_Creation();
+	Compare_CreationDeletion();
 	Compare_ComponentAdd();
 	Compare_ComponentRemove();
 	Compare_SimpleIteration();
 	Compare_SimpleIteration_5Comps();
 	Compare_Iteration_Pathological();
 	}
+
 	char a;
 	cin >> a;
 }

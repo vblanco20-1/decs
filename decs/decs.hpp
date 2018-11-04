@@ -10,7 +10,7 @@
 #include <chrono>
 #include "plf_colony.h"
 #include <cassert>
-
+#include <deque>
 using ComponentGUID = uint64_t;
 
 struct Metatype {
@@ -410,6 +410,9 @@ struct ArchetypeBlock {
 	EntityHandle GetLastEntity() {
 		return entities[last - 1];
 	}
+	int GetFreeSpace() {
+		return myArch.ARRAY_SIZE - last;
+	}
 
 	std::vector<ArchetypeComponentArray> componentArrays;
 
@@ -492,7 +495,11 @@ struct ArchetypeBlockStorage {
 
 		for (auto it = block_colony.begin(); it != block_colony.end(); ++it)
 		{
-			f((*it));
+			if (it->last != 0)
+			{
+				f((*it));
+			}
+			
 		}
 
 		//ArchetypeBlock * ptr = first;
@@ -687,29 +694,10 @@ struct ECSWorld {
 
 	}
 
-	//ArchetypeBlock * CreateBlock(const Archetype & arc) {
-	//	
-	//	for (auto & b : BlockStorage)
-	//	{
-	//		if (b.ExactMatch(arc.componentlist))
-	//		{
-	//			return	b.CreateNewBlock();
-	//		}
-	//	}
-	//
-	//	//no archetype found that has that
-	//	return nullptr;
-	//
-	//
-	//	//Blocks.push_back( ArchetypeBlock(arc) );
-	//	//return &Blocks[Blocks.size() - 1];
-	//}
-
 	ArchetypeBlock * FindOrCreateBlockForArchetype(const Archetype & arc)
 	{
 			ArchetypeBlock * entityBlock = nullptr;
-		//find the free block
-		//arc.componentlist.BuildHash();
+		//find the free block	
 		const size_t numComponents = arc.componentlist.metatypes.size();
 
 		//for (ArchetypeBlockStorage & b : BlockStorage)
@@ -743,32 +731,61 @@ struct ECSWorld {
 	std::vector<EntityHandle> CreateEntityBatched(Archetype & arc, size_t amount)
 	{
 		arc.componentlist.BuildHash();
-		Entities.reserve(Entities.size() + amount);
+		//Entities.reserve(Entities.size() + amount);
 		std::vector<EntityHandle> Handles;
 		Handles.reserve(amount);
 		size_t amount_left = amount;
+		bool bCanReuseEntities = CanReuseEntity();
+		int reuses = deletedEntities.size();
+		int newcreations = amount - reuses;
+		if (newcreations > 0)
+		{
+			Entities.reserve(Entities.size() + newcreations);
+		}
+
 		while (amount_left > 0)
 		{
 			ArchetypeBlock * entityBlock = FindOrCreateBlockForArchetype(arc);
-
-			for (int i = 0; i <= ((Archetype::ARRAY_SIZE) - entityBlock->last); i++) {
+			int freespace = entityBlock->GetFreeSpace();
+			for (int i = 0; i < freespace; i++) {
 
 				if (amount_left <= 0)
 				{
 					return Handles;
 				}
 				EntityHandle newEntity;
-				newEntity.id = Entities.size();
-				newEntity.generation = 1;
+				bool bReuse = CanReuseEntity();
+				size_t index = 0;
+				if (bCanReuseEntities && bReuse) {
+					assert(Entities[index].block == nullptr);
+					index = deletedEntities.front();
+					deletedEntities.pop_front();
+					newEntity.id = index;
+					newEntity.generation = Entities[index].generation + 1;
+				}
+				else
+				{
+					bCanReuseEntities = false;
+					newEntity.id = Entities.size();
+					index = newEntity.id;
+					newEntity.generation = 1;
+				}
 
 				uint16_t pos = entityBlock->AddEntity(newEntity);
 
 				EntityStorage et;
 				et.block = entityBlock;
 				et.blockindex = pos;
-				et.generation = 1;
+				et.generation = newEntity.generation;
 
-				Entities.push_back(et);
+				if (bReuse) {
+					Entities[index] = et;
+				}
+				else {
+					Entities.push_back(et);
+				}
+
+				//Entities.push_back(et);
 				Handles.push_back(newEntity);
 				amount_left--;
 			}
@@ -778,29 +795,40 @@ struct ECSWorld {
 	EntityHandle CreateEntity(Archetype & arc) {
 		arc.componentlist.BuildHash();
 		EntityHandle newEntity;
-		newEntity.id = Entities.size();
-		newEntity.generation = 1;
+		
+		bool bReuse = CanReuseEntity();
+		size_t index = 0;
+		if (bReuse) {
+			assert(Entities[index].block == nullptr);
+			index = deletedEntities.front();
+			deletedEntities.pop_front();
+			newEntity.id = index;
+			newEntity.generation = Entities[index].generation + 1;
+		}
+		else
+		{
+			newEntity.id = Entities.size();
+			newEntity.generation = 1;
+		}
+		
 
 		ArchetypeBlock * entityBlock = FindOrCreateBlockForArchetype(arc);
 
-
 		//insert entity handle into the block
-
-
 		uint16_t pos = entityBlock->AddEntity(newEntity);
-		//auto pos = entityBlock->last;
-		//entityBlock->entities[pos] = newEntity;
-		//entityBlock->last++;
-
+		
 		EntityStorage et;
 		et.block = entityBlock;
 		et.blockindex = pos;
-		et.generation = 1;
+		et.generation = newEntity.generation;
 
-		Entities.push_back(et);
-		//Entities[Entities.size()-1].block = entityBlock;
-		//Entities[Entities.size() - 1].blockindex = pos;
-		//Entities[Entities.size() - 1].generation = 1;
+		if (bReuse){
+			Entities[index] = et;
+		}
+		else {
+			Entities.push_back(et);
+		}
+		
 
 		return newEntity;
 	}
@@ -841,6 +869,26 @@ struct ECSWorld {
 		}
 	}
 
+	void DeleteEntity(EntityHandle entity) {
+		if (Valid(entity)) {
+			EntityStorage & et = Entities[entity.id];
+
+			//delete the entity from its block
+			ArchetypeBlock * oldBlock = et.block;
+			auto oldpos = et.blockindex;
+			if (oldBlock->RemoveAndSwap(oldpos))
+			{
+				oldBlock->storage->DeleteBlock(oldBlock);
+			}
+
+			deletedEntities.push_back(entity.id);
+
+			et.block = nullptr;
+			et.blockindex = 0;
+			et.generation++;
+
+		}
+	}
 	bool Valid(EntityHandle entity)
 	{
 		const EntityStorage & et = Entities[entity.id];
@@ -872,23 +920,22 @@ struct ECSWorld {
 			Entities[SwapEntity.id].blockindex = oldpos;
 
 
-			if (!oldBlock->RemoveAndSwap(oldpos))
+			if (oldBlock->RemoveAndSwap(oldpos))
 			{
-				//oldBlock->checkSanity();				
+				oldBlock->storage->DeleteBlock(oldBlock);	
 			}
-			else
-			{
-				oldBlock->storage->DeleteBlock(oldBlock);
-			}
-
-			//newBlock->checkSanity();
+			
 			//update the low level data
 			et.block = newBlock;
 			et.blockindex = pos;
 		}
 	}
+	
+	bool CanReuseEntity() {
+		return !deletedEntities.empty();
+	}
 
 	std::vector<EntityStorage> Entities;
-	//std::vector<ArchetypeBlock> Blocks;
+	std::deque<size_t> deletedEntities;
 	std::vector<ArchetypeBlockStorage> BlockStorage;
 };
