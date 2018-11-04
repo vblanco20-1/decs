@@ -1,5 +1,7 @@
 #include "decs.hpp"
 
+#include "ExampleComponents.h"
+
 
 BaseComponent::IDCounter BaseComponent::family_counter_ = 1;
 
