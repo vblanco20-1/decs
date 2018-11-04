@@ -11,6 +11,8 @@
 #include "plf_colony.h"
 #include <cassert>
 #include <deque>
+#include <algorithm>
+#include <execution>
 using ComponentGUID = uint64_t;
 
 struct Metatype {
@@ -23,7 +25,7 @@ struct Metatype {
 
 		Metatype meta;
 
-		meta.name_hash =typeid(T).hash_code(); //(size_t)T::GUID();
+		meta.name_hash = typeid(T).hash_code(); //(size_t)T::GUID();
 		meta.size = sizeof(T);
 		meta.align = alignof(T);
 
@@ -329,7 +331,7 @@ struct ArchetypeBlock {
 
 		return TypedArchetypeComponentArray<C>();
 	}
-	
+
 	uint16_t AddEntity(EntityHandle handle)
 	{
 		uint16_t pos = last;
@@ -376,7 +378,7 @@ struct ArchetypeBlock {
 		if (last <= 0)
 		{
 			//block emptied
-			
+
 			return true;
 		}
 		if (idx >= last)
@@ -464,19 +466,19 @@ struct ArchetypeBlockStorage {
 		ArchetypeBlock * blk = &(*b);
 		//blk->next = nullptr;
 		blk->storage = this;
-		
-		
+
+
 		return blk;
 	}
 
 
 	void DeleteBlock(ArchetypeBlock * blk) {
-		
+
 		freeblock = nullptr;
-		
-		
+
+
 		nblocks--;
-		
+
 		for (auto it = block_colony.begin(); it != block_colony.end(); ++it)
 		{
 			//for (auto &it : block_colony)
@@ -488,7 +490,7 @@ struct ArchetypeBlockStorage {
 				return;
 			}
 		}
-		
+
 	}
 	template<typename F>
 	void Iterate(F&& f) {
@@ -499,24 +501,27 @@ struct ArchetypeBlockStorage {
 			{
 				f((*it));
 			}
-			
-		}
 
-		//ArchetypeBlock * ptr = first;
-		////iterate linked list
-		//while (ptr != nullptr)
-		//{
-		//	f(*ptr);
-		//	ptr = ptr->next;
-		//}
+		}
+	}
+	void AddBlocksToList(std::vector<ArchetypeBlock*>& blocks) {
+
+		for (auto it = block_colony.begin(); it != block_colony.end(); ++it)
+		{
+			if (it->last != 0)
+			{
+				blocks.push_back(&(*it));
+			}
+
+		}
 	}
 
 	ArchetypeBlock * FindFreeBlock() {
 		//cached freeblock
-			if (freeblock != nullptr && freeblock->last < (Archetype::ARRAY_SIZE - 1))
-			{
-				return freeblock;
-			}
+		if (freeblock != nullptr && freeblock->last < (Archetype::ARRAY_SIZE - 1))
+		{
+			return freeblock;
+		}
 
 		ArchetypeBlock * ptr = nullptr;
 		//iterate linked list
@@ -524,15 +529,15 @@ struct ArchetypeBlockStorage {
 		for (auto & b : block_colony)
 		{
 			ptr = &b;
-			
-				if (ptr->last < (Archetype::ARRAY_SIZE - 1))
-				{
-					freeblock = ptr;
-					return ptr;
-				}
 
-				//ptr = ptr->next;
-			
+			if (ptr->last < (Archetype::ARRAY_SIZE - 1))
+			{
+				freeblock = ptr;
+				return ptr;
+			}
+
+			//ptr = ptr->next;
+
 		}
 
 		freeblock = nullptr;
@@ -554,21 +559,6 @@ struct ArchetypeBlockStorage {
 
 
 
-template <typename Derived>
-struct Component : public BaseComponent {
-
-	//private:
-	friend class EntityManager;
-
-	static ComponentGUID GUID();
-};
-
-template <typename C>
-ComponentGUID Component<C>::GUID() {
-	static ComponentGUID family = family_counter_++;
-	return family;
-}
-
 
 
 struct EntityStorage {
@@ -580,32 +570,77 @@ struct EntityStorage {
 struct ECSWorld {
 
 
-
+	std::vector<ArchetypeBlock*> IterationBlocks;
 	template<typename F>
-	void IterateBlocks(const ComponentList &AllOfList, const ComponentList& NoneOfList, F && f) {
+	void IterateBlocks(const ComponentList &AllOfList, const ComponentList& NoneOfList, F && f, bool bParallel = false) {
 
+		IterationBlocks.resize(0);
+
+
+		bIsIterating = true;
 		for (ArchetypeBlockStorage & b : BlockStorage)
 		{
 			if (b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
 			{
 				if (b.myArch.Match(NoneOfList) == 0)
 				{
-					b.Iterate(f);
+					b.AddBlocksToList(IterationBlocks);
+					//b.Iterate(f);
 					//f(b);
 				}
 			}
 		}
+		if (bParallel)
+		{
+			std::for_each(std::execution::par, IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
+				assert(bk->last <= Archetype::ARRAY_SIZE);
+				f(*bk);
+			});
+		}
+		else
+		{
+			std::for_each(IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
+				assert(bk->last <= Archetype::ARRAY_SIZE);
+				f(*bk);
+			});
+		}
+
+
+
+		bIsIterating = false;
 	}
 	template<typename F>
-	void IterateBlocks(const ComponentList &AllOfList, F && f) {
-
+	void IterateBlocks(const ComponentList &AllOfList, F && f, bool bParallel = false) {
+		IterationBlocks.resize(0);
+		bIsIterating = true;
 		for (ArchetypeBlockStorage & b : BlockStorage)
 		{
 			if (b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
 			{
-				b.Iterate(f);
+				b.AddBlocksToList(IterationBlocks);
+				//b.Iterate(f);
 			}
 		}
+
+		if (bParallel)
+		{
+			std::for_each(std::execution::par, IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
+				assert(bk->last <= Archetype::ARRAY_SIZE);
+				f(*bk);
+			});
+		}
+		else
+		{
+			std::for_each(IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
+				assert(bk->last <= Archetype::ARRAY_SIZE);
+				f(*bk);
+			});
+		}
+
+
+
+
+		bIsIterating = false;
 	}
 	bool ValidateAll() {
 		bool valid = true;
@@ -625,7 +660,7 @@ struct ECSWorld {
 
 	ArchetypeBlock * FindOrCreateBlockForArchetype(const Archetype & arc)
 	{
-			ArchetypeBlock * entityBlock = nullptr;
+		ArchetypeBlock * entityBlock = nullptr;
 		//find the free block	
 		const size_t numComponents = arc.componentlist.metatypes.size();
 
@@ -641,7 +676,7 @@ struct ECSWorld {
 				{
 					entityBlock = b->CreateNewBlock();
 					break;
-					
+
 				}
 			}
 		}
@@ -724,7 +759,7 @@ struct ECSWorld {
 	EntityHandle CreateEntity(Archetype & arc) {
 		arc.componentlist.BuildHash();
 		EntityHandle newEntity;
-		
+
 		bool bReuse = CanReuseEntity();
 		size_t index = 0;
 		if (bReuse) {
@@ -739,25 +774,25 @@ struct ECSWorld {
 			newEntity.id = Entities.size();
 			newEntity.generation = 1;
 		}
-		
+
 
 		ArchetypeBlock * entityBlock = FindOrCreateBlockForArchetype(arc);
 
 		//insert entity handle into the block
 		uint16_t pos = entityBlock->AddEntity(newEntity);
-		
+
 		EntityStorage et;
 		et.block = entityBlock;
 		et.blockindex = pos;
 		et.generation = newEntity.generation;
 
-		if (bReuse){
+		if (bReuse) {
 			Entities[index] = et;
 		}
 		else {
 			Entities.push_back(et);
 		}
-		
+
 
 		return newEntity;
 	}
@@ -765,9 +800,10 @@ struct ECSWorld {
 	template<typename C>
 	void AddComponent(EntityHandle entity)		//, C&comp)
 	{
-		const EntityStorage & et = Entities[entity.id];
-		//valid entity
 		if (Valid(entity)) {
+			const EntityStorage & et = Entities[entity.id];
+			//valid entity
+
 			static Archetype cached;
 
 			cached.SetAdd<C>(et.block->myArch);
@@ -835,7 +871,7 @@ struct ECSWorld {
 			ArchetypeBlock * oldBlock = et.block;
 
 			ArchetypeBlock * newBlock = FindOrCreateBlockForArchetype(arc);
-		
+
 			//create entity in the new block
 			auto pos = newBlock->AddEntity(entity);
 			auto oldpos = et.blockindex;
@@ -845,37 +881,46 @@ struct ECSWorld {
 			//clear old entity slot
 			EntityHandle SwapEntity = oldBlock->GetLastEntity();
 
-			
+
 			Entities[SwapEntity.id].blockindex = oldpos;
 
 
 			if (oldBlock->RemoveAndSwap(oldpos))
 			{
-				oldBlock->storage->DeleteBlock(oldBlock);	
+				//if (bIsIterating)
+				//{
+				//	bWantsDeletes = true;
+				//}
+				//else
+				//{
+				oldBlock->storage->DeleteBlock(oldBlock);
+				//}
+				//oldBlock->storage->DeleteBlock(oldBlock);	
 			}
-			
+
 			//update the low level data
 			et.block = newBlock;
 			et.blockindex = pos;
 		}
 	}
-	
+
 	bool CanReuseEntity() {
 		return !deletedEntities.empty();
 	}
 
 	template<typename Component>
 	Component & GetComponent(EntityHandle entity) {
-		
-		const auto et = EntityStorage[entity.id];
+
+		const auto et = Entities[entity.id];
 		return et.block->GetComponentArray<Component>().Get(et.blockindex);
-		
+
 	}
 
 	std::vector<EntityStorage> Entities;
 	std::deque<size_t> deletedEntities;
 	std::vector<ArchetypeBlockStorage> BlockStorage;
-
+	bool bIsIterating{ false };
+	bool bWantsDeletes{ false };
 
 	//EnTT style  wrapper for porting
 	EntityHandle create() {
@@ -892,8 +937,15 @@ struct ECSWorld {
 		AddComponent<Component>(entity);
 		Component & comp = GetComponent<Component>(entity);
 		comp = args;
-		return comp;
+		return GetComponent<Component>(entity);
 	}
+	template<typename Component>
+	Component & assign(EntityHandle entity) {
+		AddComponent<Component>(entity);
+		Component & comp = GetComponent<Component>(entity);
+		return GetComponent<Component>(entity);
+	}
+
 	template<typename Component>
 	void remove(EntityHandle entity)
 	{
