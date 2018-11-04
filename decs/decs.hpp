@@ -410,7 +410,7 @@ struct ArchetypeBlock {
 	EntityHandle GetLastEntity() {
 		return entities[last - 1];
 	}
-	int GetFreeSpace() {
+	int GetSpace() {
 		return myArch.ARRAY_SIZE - last;
 	}
 
@@ -675,7 +675,7 @@ struct ECSWorld {
 		while (amount_left > 0)
 		{
 			ArchetypeBlock * entityBlock = FindOrCreateBlockForArchetype(arc);
-			int freespace = entityBlock->GetFreeSpace();
+			int freespace = entityBlock->GetSpace();
 			for (int i = 0; i < freespace; i++) {
 
 				if (amount_left <= 0)
