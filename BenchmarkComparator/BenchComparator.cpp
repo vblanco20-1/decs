@@ -450,6 +450,17 @@ void Compare_Iteration_Pathological()
 			compares3 += uniform_dist2(rng2);
 		}
 	},true);
+	tim.elapsed();
+	compares3 = 0;
+	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
+
+		//auto ap = block.GetComponentArray<Position>();
+		//	auto ar = block.GetComponentArray<Rotation>();
+		for (int i = 0; i < block.last; i++)
+		{
+			compares3 += uniform_dist2(rng2);
+		}
+	}, true);
 
 	double Decs_parallel = tim.elapsed();
 
