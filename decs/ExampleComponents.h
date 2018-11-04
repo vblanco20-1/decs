@@ -22,6 +22,10 @@ struct C1{
 	}
 	float x, y, z;
 };
+template<std::size_t>
+struct comp { int x; };
+
+
 struct C2 {
 
 	C2() = default;

@@ -304,7 +304,7 @@ void Compare_SimpleIteration_5Comps()
 void Compare_Iteration_Pathological()
 {
 	ECSWorld V_ECS;
-	V_ECS.BlockStorage.reserve(100);
+	V_ECS.BlockStorage.reserve(10000);
 	entt::registry<> Entt_ECS;
 
 
@@ -323,7 +323,7 @@ void Compare_Iteration_Pathological()
 	Cs.AddComponent<C2>();
 	Cs.AddComponent<C3>();
 
-	std::cout << "Iterating entities: pathological random case 5 Component find 3-------------------------------" << std::endl;
+	std::cout << "Iterating entities: pathological random case 10 Component find 3-------------------------------" << std::endl;
 
 	std::mt19937 rng(0);
 	std::uniform_int_distribution<int> uniform_dist(1, 10);
@@ -349,7 +349,27 @@ void Compare_Iteration_Pathological()
 		if (uniform_dist(rng) < 4)
 		{
 			Entt_ECS.assign<C3>(e);
-		}		
+		}	
+		if (uniform_dist(rng) < 4)
+		{
+			Entt_ECS.assign<comp<1>>(e);
+		}
+		if (uniform_dist(rng) < 4)
+		{
+			Entt_ECS.assign<comp<2>>(e);
+		}
+		if (uniform_dist(rng) < 4)
+		{
+			Entt_ECS.assign<comp<3>>(e);
+		}
+		if (uniform_dist(rng) < 4)
+		{
+			Entt_ECS.assign<comp<4>>(e);
+		}
+		if (uniform_dist(rng) < 4)
+		{
+			Entt_ECS.assign<comp<5>>(e);
+		}
 	}
 	std::mt19937 rng2(0);
 	std::uniform_int_distribution<int> uniform_dist2(1, 10);
@@ -376,6 +396,28 @@ void Compare_Iteration_Pathological()
 		{
 			V_ECS.AddComponent<C3>(e);
 		}
+
+		if (uniform_dist(rng) < 4)
+		{
+			V_ECS.AddComponent<comp<1>>(e);
+		}
+		if (uniform_dist(rng) < 4)
+		{
+			V_ECS.AddComponent<comp<2>>(e);
+		}
+		if (uniform_dist(rng) < 4)
+		{
+			V_ECS.AddComponent<comp<3>>(e);
+		}
+		if (uniform_dist(rng) < 4)
+		{
+			V_ECS.AddComponent<comp<4>>(e);
+		}
+		if (uniform_dist(rng) < 4)
+		{
+			V_ECS.AddComponent<comp<5>>(e);
+		}
+
 	}
 	//auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
 
@@ -398,7 +440,21 @@ void Compare_Iteration_Pathological()
 	});
 	double Decs_creation = tim.elapsed();
 
+	int compares3 = 0;
+	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
+
+		//auto ap = block.GetComponentArray<Position>();
+		//	auto ar = block.GetComponentArray<Rotation>();
+		for (int i = 0; i < block.last; i++)
+		{
+			compares3 += uniform_dist2(rng2);
+		}
+	},true);
+
+	double Decs_parallel = tim.elapsed();
+
 	cout << "Total Iterations: " << compares << ":" << compares2 << endl;
+	cout <<"    Decs Parallel: " << Decs_parallel <<"ms"  << endl;
 	Print_Comparaision(Entt_creation, Decs_creation);
 }
 
