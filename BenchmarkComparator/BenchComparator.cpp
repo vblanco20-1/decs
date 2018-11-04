@@ -5,6 +5,8 @@
 #include <chrono>
 #include <random>
 
+#include "ExampleComponents.h"
+
 using namespace std;
 BaseComponent::IDCounter BaseComponent::family_counter_ = 1;
 
