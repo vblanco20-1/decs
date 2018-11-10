@@ -72,5 +72,5 @@ struct Acceleration   {
 struct BigComponent {
 
 	//static constexpr ComponentGUID GUID = 324132;
-	int data[10000];
+	int data[100];
 };

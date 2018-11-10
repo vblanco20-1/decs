@@ -19,6 +19,7 @@ struct Metatype {
 	size_t name_hash;
 	size_t size;
 	size_t align;
+	const char * name;
 
 	template<typename T>
 	static Metatype BuildMetatype() {
@@ -26,6 +27,7 @@ struct Metatype {
 		Metatype meta;
 
 		meta.name_hash = typeid(T).hash_code(); //(size_t)T::GUID();
+		meta.name = typeid(T).name();
 		meta.size = sizeof(T);
 		meta.align = alignof(T);
 
@@ -96,12 +98,20 @@ struct Archetype {
 		//Archetype arc;
 		componentlist.metatypes.clear();
 		componentlist.metatypes.reserve(rhs.componentlist.metatypes.size() + 1);
-
+		bool added = false;
+		auto m = Metatype::BuildMetatype<C>();
 		for (auto c : rhs.componentlist.metatypes)
 		{
 			componentlist.metatypes.push_back(c);
+			if (c.name_hash == m.name_hash) {
+				added = true;
+			}
 		}
-		componentlist.metatypes.push_back(Metatype::BuildMetatype<C>());
+		if (!added)
+		{
+			componentlist.metatypes.push_back(Metatype::BuildMetatype<C>());
+		}
+
 		componentlist.BuildHash();
 		//return std::move(arc);
 	}
@@ -232,6 +242,35 @@ struct ArchetypeComponentArray {
 		data = malloc(Archetype::ARRAY_SIZE * type.size);
 		metatype = type;
 	}
+	~ArchetypeComponentArray() {
+		if (data != nullptr)
+		{
+			free(data);
+		}
+
+	}
+	//copy constructor
+	ArchetypeComponentArray(ArchetypeComponentArray& arg) // the expression "arg.member" is lvalue
+	{
+		Metatype type = arg.metatype;
+		data = malloc(Archetype::ARRAY_SIZE * type.size);
+		metatype = type;
+
+	}
+	// Simple move constructor
+	ArchetypeComponentArray(ArchetypeComponentArray&& arg) // the expression "arg.member" is lvalue
+	{
+		data = arg.data;
+		arg.data = nullptr;
+		metatype = std::move(arg.metatype);
+	}
+	// Simple move assignment operator
+	ArchetypeComponentArray& operator=(ArchetypeComponentArray&& other) {
+		data = other.data;
+		other.data = nullptr;
+		metatype = std::move(other.metatype);
+		return *this;
+	}
 
 	void Copy(uint64_t src, uint64_t dst)
 	{
@@ -281,29 +320,31 @@ struct EntityHandle {
 };
 struct ArchetypeBlockStorage;
 struct ArchetypeBlock;
+struct ECSWorld;
 //void ArchetypeBlockStorage::DeleteBlock(ArchetypeBlockStorage * store, ArchetypeBlock * blk);
 struct ArchetypeBlock {
-
+	size_t canary;
 	Archetype myArch;
 	ArchetypeBlock(const Archetype &arch) {
 
 		for (auto &m : arch.componentlist.metatypes)
 		{
-			ArchetypeComponentArray newArray = ArchetypeComponentArray(m);
-			componentArrays.push_back(newArray);
+			//ArchetypeComponentArray newArray = ;
+			componentArrays.push_back(std::move(ArchetypeComponentArray(m)));
 		}
-
-		//prev = nullptr;
-		//
-		//next = nullptr;
-
-
+		canary = 0xDEADBEEF;
 		myArch = arch;
 		myArch.componentlist.BuildHash();
 		last = 0;
 	}
+	~ArchetypeBlock()
+	{
+		last = 0;
+		canary = 0;
+	}
 
 	bool checkSanity() {
+		if (canary != 0xDEADBEEF) return false;
 		for (int i = 0; i < Archetype::ARRAY_SIZE; i++)
 		{
 			if (entities[i].generation != 1 && i < last)
@@ -365,50 +406,50 @@ struct ArchetypeBlock {
 		entities[destEntity] = otherblock->entities[srcEntity];
 		if (destEntity >= last)
 		{
-			last = destEntity + 1;
+			assert(false);
+			last++;
 		}
 	}
 	//returns true if the block got deleted
-	bool RemoveAndSwap(uint64_t idx) {
-
-		//shrink
-		last--;
-
-
-		if (last <= 0)
-		{
-			//block emptied
-
-			return true;
-		}
-		if (idx >= last)
-		{
-
-			entities[last].generation = 2;
-			entities[last].id = 0;
-			return false;
-		}
-
-		//copy components to the index
-		for (auto &ca : componentArrays)
-		{
-			ca.Copy(last, idx);
-		}
-
-		//copy entity handle
-		entities[idx] = entities[last];
-		entities[last].generation = 0;
-		entities[last].id = 0;
-		return false;
-
-		//if (last == 0)
-		//{
-		//	if (prev != nullptr)
-		//	{
-		//		prev->next = 
-		//	}
-		//}
-	}
+	//bool RemoveAndSwap(uint64_t idx,ECSWorld * ECS) {
+	//	assert(entities[idx].generation != -1);
+	//
+	//	//shrink
+	//	last--;
+	//	
+	//	assert(canary == 0xDEADBEEF);
+	//
+	//	if (last <= 0)
+	//	{
+	//		//block emptied
+	//
+	//		return true;
+	//	}
+	//	assert(idx <= last);
+	//	if (idx == last)
+	//	{
+	//		//assert(false);
+	//		entities[last].generation = -1;
+	//		entities[last].id = -1;
+	//		return false;
+	//	}
+	//
+	//	//copy components to the index
+	//	for (auto &ca : componentArrays)
+	//	{
+	//		ca.Copy(last, idx);
+	//	}
+	//
+	//	//copy entity handle
+	//	entities[idx] = entities[last];
+	//
+	//	ECS->Entities[entities[idx].id].blockindex = idx;
+	//
+	//
+	//	entities[last].generation = -1;
+	//	entities[last].id = -1;
+	//	return false;
+	//}
 	EntityHandle GetLastEntity() {
 		return entities[last - 1];
 	}
@@ -521,7 +562,7 @@ struct ArchetypeBlockStorage {
 
 	ArchetypeBlock * FindFreeBlock() {
 		//cached freeblock
-		if (freeblock != nullptr && freeblock->last < (Archetype::ARRAY_SIZE - 1))
+		if (freeblock != nullptr && freeblock->last < (Archetype::ARRAY_SIZE))
 		{
 			return freeblock;
 		}
@@ -533,7 +574,7 @@ struct ArchetypeBlockStorage {
 		{
 			ptr = &b;
 
-			if (ptr->last < (Archetype::ARRAY_SIZE - 1))
+			if (ptr->last < (Archetype::ARRAY_SIZE))
 			{
 				freeblock = ptr;
 				return ptr;
@@ -577,6 +618,7 @@ struct ECSWorld {
 	template<typename F>
 	void IterateBlocks(const ComponentList &AllOfList, const ComponentList& NoneOfList, F && f, bool bParallel = false) {
 
+		//bParallel = false;
 		IterationBlocks.resize(0);
 
 
@@ -614,6 +656,7 @@ struct ECSWorld {
 	}
 	template<typename F>
 	void IterateBlocks(const ComponentList &AllOfList, F && f, bool bParallel = false) {
+		//bParallel = false;
 		IterationBlocks.resize(0);
 		bIsIterating = true;
 		for (ArchetypeBlockStorage & b : BlockStorage)
@@ -707,7 +750,7 @@ struct ECSWorld {
 		int newcreations = amount - reuses;
 		if (newcreations > 0)
 		{
-			Entities.reserve(Entities.size() + newcreations);
+			//Entities.reserve(Entities.size() + newcreations);
 		}
 
 		while (amount_left > 0)
@@ -724,9 +767,10 @@ struct ECSWorld {
 				bool bReuse = CanReuseEntity();
 				size_t index = 0;
 				if (bCanReuseEntities && bReuse) {
-					assert(Entities[index].block == nullptr);
+
 					index = deletedEntities.front();
 					deletedEntities.pop_front();
+					assert(Entities[index].block == nullptr);
 					newEntity.id = index;
 					newEntity.generation = Entities[index].generation + 1;
 				}
@@ -775,9 +819,13 @@ struct ECSWorld {
 		else
 		{
 			newEntity.id = Entities.size();
+			index = Entities.size();
 			newEntity.generation = 1;
 		}
-
+		if (index == 2048)
+		{
+			std::cout << "error";
+		}
 
 		ArchetypeBlock * entityBlock = FindOrCreateBlockForArchetype(arc);
 
@@ -793,10 +841,15 @@ struct ECSWorld {
 			Entities[index] = et;
 		}
 		else {
+
 			Entities.push_back(et);
+			index = Entities.size() - 1;
 		}
 
 
+		ArchetypeBlock* block = Entities[newEntity.id].block;
+		auto blockidx = Entities[newEntity.id].blockindex;
+		assert(block->entities[blockidx] == newEntity);
 		return newEntity;
 	}
 
@@ -838,30 +891,78 @@ struct ECSWorld {
 	}
 
 	void DeleteEntity(EntityHandle entity) {
-		if (Valid(entity)) {
-			EntityStorage & et = Entities[entity.id];
+		assert(Valid(entity));
+		EntityStorage & et = Entities[entity.id];
 
-			//delete the entity from its block
-			ArchetypeBlock * oldBlock = et.block;
-			auto oldpos = et.blockindex;
-			if (oldBlock->RemoveAndSwap(oldpos))
-			{
-				oldBlock->storage->DeleteBlock(oldBlock);
-			}
-
-			deletedEntities.push_back(entity.id);
-
-			et.block = nullptr;
-			et.blockindex = 0;
-			et.generation++;
-
+		//delete the entity from its block
+		ArchetypeBlock * oldBlock = et.block;
+		auto oldpos = et.blockindex;
+		if (RemoveAndSwapFromBlock(oldpos, *oldBlock))
+		{
+			oldBlock->storage->DeleteBlock(oldBlock);
 		}
+
+		deletedEntities.push_back(entity.id);
+
+		et.block = nullptr;
+		et.blockindex = 0;
+		et.generation++;
 	}
+
+	//returns true if the block got deleted
+	bool RemoveAndSwapFromBlock(uint64_t idx, ArchetypeBlock & Block) {
+		assert(Block.entities[idx].generation != -1);
+
+		//shrink
+		Block.last--;
+
+		assert(Block.canary == 0xDEADBEEF);
+
+		if (Block.last <= 0)
+		{
+			//block emptied
+
+			return true;
+		}
+		assert(idx <= Block.last);
+		if (idx == Block.last)
+		{
+			//assert(false);
+			Block.entities[Block.last].generation = -1;
+			Block.entities[Block.last].id = -1;
+			return false;
+		}
+
+		//copy components to the index
+		for (auto &ca : Block.componentArrays)
+		{
+			ca.Copy(Block.last, idx);
+		}
+
+		//copy entity handle
+		Block.entities[idx] = Block.entities[Block.last];
+
+		Entities[Block.entities[idx].id].blockindex = idx;
+
+
+		Block.entities[Block.last].generation = -1;
+		Block.entities[Block.last].id = -1;
+		return false;
+	}
+
 	bool Valid(EntityHandle entity)
 	{
+		assert(entity.id < Entities.size());
 		const EntityStorage & et = Entities[entity.id];
+		if (et.block != nullptr)
+		{
+			assert(et.block->canary == 0xDEADBEEF);
+		}
+		assert(et.blockindex <= Archetype::ARRAY_SIZE);
+		assert(et.blockindex >= 0);
+
 		//valid entity
-		return (et.generation == entity.generation && et.block != nullptr && et.block->last <= Archetype::ARRAY_SIZE && et.block->last >= 0);
+		return (et.generation == entity.generation  && et.block != nullptr && et.block->last <= Archetype::ARRAY_SIZE && et.block->last >= 0);
 
 	}
 
@@ -869,42 +970,49 @@ struct ECSWorld {
 
 		EntityStorage & et = Entities[entity.id];
 
-		if (Valid(entity)) {
+		assert(Valid(entity));
 
-			ArchetypeBlock * oldBlock = et.block;
-
-			ArchetypeBlock * newBlock = FindOrCreateBlockForArchetype(arc);
-
-			//create entity in the new block
-			auto pos = newBlock->AddEntity(entity);
-			auto oldpos = et.blockindex;
-			//copy old block entity into new block entity
-			newBlock->CopyEntityFromBlock(pos, oldpos, oldBlock);
-
-			//clear old entity slot
-			EntityHandle SwapEntity = oldBlock->GetLastEntity();
-
-
-			Entities[SwapEntity.id].blockindex = oldpos;
-
-
-			if (oldBlock->RemoveAndSwap(oldpos))
-			{
-				//if (bIsIterating)
-				//{
-				//	bWantsDeletes = true;
-				//}
-				//else
-				//{
-				oldBlock->storage->DeleteBlock(oldBlock);
-				//}
-				//oldBlock->storage->DeleteBlock(oldBlock);	
-			}
-
-			//update the low level data
-			et.block = newBlock;
-			et.blockindex = pos;
+		ArchetypeBlock * oldBlock = et.block;
+		if (oldBlock->myArch.ExactMatch(arc.componentlist))
+		{
+			return;
 		}
+
+		assert(oldBlock->canary == 0xDEADBEEF);
+
+		ArchetypeBlock * newBlock = FindOrCreateBlockForArchetype(arc);
+
+		//create entity in the new block
+		auto pos = newBlock->AddEntity(entity);
+		auto oldpos = et.blockindex;
+		//copy old block entity into new block entity
+		newBlock->CopyEntityFromBlock(pos, oldpos, oldBlock);
+
+		//clear old entity slot
+		EntityHandle SwapEntity = oldBlock->GetLastEntity();
+
+
+		Entities[SwapEntity.id].blockindex = oldpos;
+
+
+		if (RemoveAndSwapFromBlock(oldpos, *oldBlock))
+		{
+			//if (bIsIterating)
+			//{
+			//	bWantsDeletes = true;
+			//}
+			//else
+			//{
+			auto storage = oldBlock->storage;
+			storage->DeleteBlock(oldBlock);
+			//}
+			//oldBlock->storage->DeleteBlock(oldBlock);	
+		}
+
+		//update the low level data
+		et.block = newBlock;
+		et.blockindex = pos;
+
 	}
 
 	bool CanReuseEntity() {
