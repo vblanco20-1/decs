@@ -247,8 +247,192 @@ TEST_CASE("Entity Create and Destroy: 1 Entity") {
 		//entity stores the correct pointer
 		//REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
 	}
-}
 
+
+}
+TEST_CASE("Entity Create and Destroy: Many Entities") {
+
+
+	ECSWorld ECS;
+	ECS.BlockStorage.reserve(20);
+
+	SECTION("Creating and destroying 4 blocks: should not match, perfect order") {
+		EntityHandle handle;
+		int num = Arc_Pos_Rot_Big.ARRAY_SIZE * 3;
+		std::vector<EntityHandle> Handles;
+		Handles.reserve(num * 3);
+		for (int i = 0; i < num; i++) {
+
+			handle = ECS.CreateEntity(Arc_Pos_Rot);
+			Handles.push_back(handle);
+			handle = ECS.CreateEntity(Arc_Position);
+			Handles.push_back(handle);
+			//handle = ECS.CreateEntity(Arc_Pos_Rot_Big);
+			//Handles.push_back(handle);
+			//ECS.DeleteEntity(handle);
+
+		}
+
+		bool validation = ECS.ValidateAll();
+		REQUIRE(validation);
+
+		for (auto h : Handles)
+		{
+			ECS.DeleteEntity(h);
+		}
+		
+		validation = ECS.ValidateAll();
+		REQUIRE(validation);
+
+		//REQUIRE(handle.id == 0);
+		//REQUIRE(ECS.Valid(handle) == false);
+		//REQUIRE(ECS.BlockStorage.size() == 1);
+
+
+		int BlocksIterated = 0;
+		int EntitiesIterated = 0;
+		int HandleMatches = 0;
+		ECS.IterateBlocks(Arc_Rotation.componentlist, [&](ArchetypeBlock & block) {
+			BlocksIterated++;
+			auto &ap = block.entities;//block.GetComponentArray<Position>();
+
+			for (int i = 0; i < block.last; i++)
+			{
+				EntitiesIterated++;
+
+				if (ap[i] == handle)
+				{
+					HandleMatches++;
+				}
+			}
+		});
+
+		REQUIRE(BlocksIterated == 0);
+		REQUIRE(EntitiesIterated == 0);
+		REQUIRE(HandleMatches == 0);
+		//entity stores the correct pointer
+		//REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
+	}
+	SECTION("Creating and destroying 4 blocks: should not match, reverse order") {
+		EntityHandle handle;
+		int num = Arc_Pos_Rot_Big.ARRAY_SIZE * 3;
+		std::vector<EntityHandle> Handles;
+		Handles.reserve(num * 3);
+		for (int i = 0; i < num; i++) {
+
+			handle = ECS.CreateEntity(Arc_Pos_Rot);
+			Handles.push_back(handle);
+			handle = ECS.CreateEntity(Arc_Position);
+			Handles.push_back(handle);
+			//handle = ECS.CreateEntity(Arc_Pos_Rot_Big);
+			//Handles.push_back(handle);
+			//ECS.DeleteEntity(handle);
+
+		}
+		std::reverse(Handles.begin(), Handles.end());
+
+		bool validation = ECS.ValidateAll();
+		REQUIRE(validation);
+
+		for (auto h : Handles)
+		{
+			ECS.DeleteEntity(h);
+		}
+
+		validation = ECS.ValidateAll();
+		REQUIRE(validation);
+
+		//REQUIRE(handle.id == 0);
+		//REQUIRE(ECS.Valid(handle) == false);
+		//REQUIRE(ECS.BlockStorage.size() == 1);
+
+
+		int BlocksIterated = 0;
+		int EntitiesIterated = 0;
+		int HandleMatches = 0;
+		ECS.IterateBlocks(Arc_Rotation.componentlist, [&](ArchetypeBlock & block) {
+			BlocksIterated++;
+			auto &ap = block.entities;//block.GetComponentArray<Position>();
+
+			for (int i = 0; i < block.last; i++)
+			{
+				EntitiesIterated++;
+
+				if (ap[i] == handle)
+				{
+					HandleMatches++;
+				}
+			}
+		});
+
+		REQUIRE(BlocksIterated == 0);
+		REQUIRE(EntitiesIterated == 0);
+		REQUIRE(HandleMatches == 0);
+		//entity stores the correct pointer
+		//REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
+	}
+
+	SECTION("Creating and destroying 4 blocks: should not match, random order") {
+		EntityHandle handle;
+		int num = Arc_Pos_Rot_Big.ARRAY_SIZE * 3;
+		std::vector<EntityHandle> Handles;
+		Handles.reserve(num * 3);
+		for (int i = 0; i < num; i++) {
+
+			handle = ECS.CreateEntity(Arc_Pos_Rot);
+			Handles.push_back(handle);
+			handle = ECS.CreateEntity(Arc_Position);
+			Handles.push_back(handle);
+			//handle = ECS.CreateEntity(Arc_Pos_Rot_Big);
+			//Handles.push_back(handle);
+			//ECS.DeleteEntity(handle);
+
+		}
+
+		std::mt19937 g(0);
+		std::shuffle(Handles.begin(), Handles.end(),g);
+
+		bool validation = ECS.ValidateAll();
+		REQUIRE(validation);
+
+		for (auto h : Handles)
+		{
+			ECS.DeleteEntity(h);
+		}
+
+		validation = ECS.ValidateAll();
+		REQUIRE(validation);
+
+		//REQUIRE(handle.id == 0);
+		//REQUIRE(ECS.Valid(handle) == false);
+		//REQUIRE(ECS.BlockStorage.size() == 1);
+
+
+		int BlocksIterated = 0;
+		int EntitiesIterated = 0;
+		int HandleMatches = 0;
+		ECS.IterateBlocks(Arc_Rotation.componentlist, [&](ArchetypeBlock & block) {
+			BlocksIterated++;
+			auto &ap = block.entities;//block.GetComponentArray<Position>();
+
+			for (int i = 0; i < block.last; i++)
+			{
+				EntitiesIterated++;
+
+				if (ap[i] == handle)
+				{
+					HandleMatches++;
+				}
+			}
+		});
+
+		REQUIRE(BlocksIterated == 0);
+		REQUIRE(EntitiesIterated == 0);
+		REQUIRE(HandleMatches == 0);
+		//entity stores the correct pointer
+		//REQUIRE(ECS.Entities[0].block == ECS.BlockStorage[0].first);
+	}
+}
 
 TEST_CASE("Entity Creation: 1 Entity - Batched") {
 	

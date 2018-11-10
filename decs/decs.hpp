@@ -422,7 +422,7 @@ struct ArchetypeBlock {
 	std::array<EntityHandle, Archetype::ARRAY_SIZE> entities;
 
 	//max index that has an entity
-	uint16_t last{ 0 };
+	int16_t last{ 0 };
 
 	//linked list
 	//ArchetypeBlock * prev;
@@ -467,7 +467,7 @@ struct ArchetypeBlockStorage {
 		//blk->next = nullptr;
 		blk->storage = this;
 
-
+		assert(nblocks == block_colony.size());
 		return blk;
 	}
 
@@ -479,6 +479,7 @@ struct ArchetypeBlockStorage {
 
 		nblocks--;
 
+		bool bDeleted = false;
 		for (auto it = block_colony.begin(); it != block_colony.end(); ++it)
 		{
 			//for (auto &it : block_colony)
@@ -487,10 +488,12 @@ struct ArchetypeBlockStorage {
 			{
 				it->last = 0;
 				block_colony.erase(it);
-				return;
+				bDeleted = true;
+				break;
 			}
 		}
-
+		assert(bDeleted);
+		assert(nblocks == block_colony.size());
 	}
 	template<typename F>
 	void Iterate(F&& f) {
