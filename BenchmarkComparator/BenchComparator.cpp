@@ -1,4 +1,3 @@
-
 #include "decs.hpp"
 #include "entt.hpp"
 #include <iostream>
@@ -36,9 +35,9 @@ void Compare_CreationDeletion()
 	ECSWorld V_ECS;
 	V_ECS.BlockStorage.reserve(100);
 	entt::registry<> Entt_ECS;
-	
+
 	Archetype EmptyArchetype;
-	
+
 	std::cout << "Constructing 1.000.000 entities-------------------------------" << std::endl;
 	timer tim;
 	//create entt entities
@@ -46,11 +45,11 @@ void Compare_CreationDeletion()
 		Entt_ECS.create();
 	}
 	double Entt_creation = tim.elapsed();
-	
+
 	auto ets = V_ECS.CreateEntityBatched(EmptyArchetype, 1000000L);
-	
+
 	double Decs_creation = tim.elapsed();
-	
+
 	Print_Comparaision(Entt_creation, Decs_creation);
 
 
@@ -58,7 +57,7 @@ void Compare_CreationDeletion()
 
 	tim.elapsed();
 
-	Entt_ECS.each( [&](auto e) {
+	Entt_ECS.each([&](auto e) {
 		Entt_ECS.destroy(e);
 	});
 	Entt_creation = tim.elapsed();
@@ -83,20 +82,20 @@ void Compare_ComponentAdd()
 	Archetype EmptyArchetype;
 
 	std::cout << "Adding component to 1.000.000 entities-------------------------------" << std::endl;
-	
+
 	//create entt entities
 	for (std::uint64_t i = 0; i < 1000000L; i++) {
 		Entt_ECS.create();
 	}
-	
+
 
 	auto handles = V_ECS.CreateEntityBatched(EmptyArchetype, 1000000L);
 
-	
+
 
 	timer tim;
 
-	
+
 	Entt_ECS.each([&Entt_ECS](auto entity) {
 		Entt_ECS.assign<Position>(entity);
 	});
@@ -117,7 +116,7 @@ void Compare_ComponentRemove() {
 	V_ECS.BlockStorage.reserve(100);
 	entt::registry<> Entt_ECS;
 
-	
+
 	Archetype PosRot;
 	PosRot.AddComponent<Position>();
 	PosRot.AddComponent<Rotation>();
@@ -191,7 +190,7 @@ void Compare_SimpleIteration()
 
 
 	int p = 0;
-	
+
 	Entt_ECS.view<Position>().each([&](auto entity, auto& c) {
 		p++;
 		c.x = uniform_dist2(rng2);
@@ -199,27 +198,27 @@ void Compare_SimpleIteration()
 	});
 	p = 0;
 	V_ECS.IterateBlocks(PosOnly.componentlist, empty.componentlist, [&](ArchetypeBlock & block) {
-		
+
 		auto ap = block.GetComponentArray<Position>();
-		
+
 		for (int i = 0; i < block.last; i++)
 		{
 			p++;
 			ap.Get(i).x = uniform_dist1(rng1);
 			ap.Get(i).y = p;
-		}		
+		}
 	});
 
-	
+
 
 	timer tim;
 
 	int compares = 0;
-	Entt_ECS.view<Position>().each([&](auto entity,const auto &c) {
+	Entt_ECS.view<Position>().each([&](auto entity, const auto &c) {
 
 		const int x = c.x;
 		const int y = c.y;
-		compares+= x % 20 + y;
+		compares += x % 20 + y;
 	});
 	double Entt_creation = tim.elapsed();
 	int compares2 = 0;
@@ -236,7 +235,7 @@ void Compare_SimpleIteration()
 			//cout << ":" << x << ";";
 			compares2 += x % 20 + y;
 		}
-		
+
 	});
 	double Decs_creation = tim.elapsed();
 
@@ -276,22 +275,27 @@ void Compare_SimpleIteration_5Comps()
 	}
 
 	auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
+	auto view = Entt_ECS.persistent_view<Position, Rotation, C1, C2, C3>();
+	view.initialize();
 
 	timer tim;
 
 	int compares = 0;
-	Entt_ECS.view<Position,Rotation,C1,C2,C3>().each([&](auto entity, auto c, auto c1, auto c2, auto c3, auto c4 ) {
+	view.each([&](auto entity, auto &c, auto &c1, auto &c2, auto &c3, auto &c4) {
+		c.x = c1.y * c2.z;
 		compares++;
 	});
 	double Entt_creation = tim.elapsed();
 
 	int compares2 = 0;
 	V_ECS.IterateBlocks(All.componentlist, empty.componentlist, [&](ArchetypeBlock & block) {
+		auto ap = block.GetComponentArray<Position>();
+		auto ar = block.GetComponentArray<Rotation>();
+		auto c1 = block.GetComponentArray<C1>();
 
-		//auto ap = block.GetComponentArray<Position>();
-		//	auto ar = block.GetComponentArray<Rotation>();
 		for (int i = 0; i < block.last; i++)
 		{
+			ap.Get(i).x = ar.Get(i).y * c1.Get(i).z;
 			compares2++;
 		}
 	});
@@ -329,164 +333,131 @@ void Compare_Iteration_Pathological()
 	std::uniform_int_distribution<int> uniform_dist(1, 10);
 	//create entt entities
 	for (std::uint64_t i = 0; i < 1000000L; i++) {
-		auto e = Entt_ECS.create();
+		auto e1 = Entt_ECS.create();
+		auto e2 = V_ECS.CreateEntity(empty);
+
 		if (uniform_dist(rng) < 4)
 		{
-			Entt_ECS.assign<Position>(e);
+			Entt_ECS.assign<Position>(e1);
+			V_ECS.AddComponent<Position>(e2);
 		}
 		if (uniform_dist(rng) < 4)
 		{
-			Entt_ECS.assign<Rotation>(e);
+			Entt_ECS.assign<Rotation>(e1);
+			V_ECS.AddComponent<Rotation>(e2);
 		}
 		if (uniform_dist(rng) < 4)
 		{
-			C1 dummy1;
-			dummy1.x = 1.0f;
-			dummy1.y = 2.0f;
-			dummy1.z = 0.5f;
-			Entt_ECS.accommodate<C1>(e, dummy1);
+			Entt_ECS.assign<C1>(e1);
+			V_ECS.AddComponent<C1>(e2);
 		}
 		if (uniform_dist(rng) < 4)
 		{
-			C2 dummy1;
-			dummy1.x = 1.0f;
-			dummy1.y = 2.0f;
-			dummy1.z = 0.5f;
-			Entt_ECS.accommodate<C2>(e, dummy1);
+			Entt_ECS.assign<C2>(e1);
+			V_ECS.AddComponent<C2>(e2);
 		}
 		if (uniform_dist(rng) < 4)
 		{
-			C3 dummy1;
-			dummy1.x = 1.0f;
-			dummy1.y = 2.0f;
-			dummy1.z = 0.5f;
-			Entt_ECS.accommodate<C3>(e, dummy1);
-		}	
-		if (uniform_dist(rng) < 4)
-		{
-			Entt_ECS.assign<comp<1>>(e);
+			Entt_ECS.assign<C3>(e1);
+			V_ECS.AddComponent<C3>(e2);
 		}
 		if (uniform_dist(rng) < 4)
 		{
-			Entt_ECS.assign<comp<2>>(e);
+			Entt_ECS.assign<comp<1>>(e1);
+			V_ECS.AddComponent<comp<1>>(e2);
 		}
 		if (uniform_dist(rng) < 4)
 		{
-			Entt_ECS.assign<comp<3>>(e);
+			Entt_ECS.assign<comp<2>>(e1);
+			V_ECS.AddComponent<comp<2>>(e2);
 		}
 		if (uniform_dist(rng) < 4)
 		{
-			Entt_ECS.assign<comp<4>>(e);
+			Entt_ECS.assign<comp<3>>(e1);
+			V_ECS.AddComponent<comp<3>>(e2);
 		}
 		if (uniform_dist(rng) < 4)
 		{
-			Entt_ECS.assign<comp<5>>(e);
+			Entt_ECS.assign<comp<4>>(e1);
+			V_ECS.AddComponent<comp<4>>(e2);
+		}
+		if (uniform_dist(rng) < 4)
+		{
+			Entt_ECS.assign<comp<5>>(e1);
+			V_ECS.AddComponent<comp<5>>(e2);
 		}
 	}
-	std::mt19937 rng2(0);
-	std::uniform_int_distribution<int> uniform_dist2(1, 10);
-	for (std::uint64_t i = 0; i < 1000000L; i++) {
-		auto e = V_ECS.CreateEntity(empty);
 
-		if (uniform_dist2(rng2) < 4)
-		{
-			V_ECS.AddComponent<Position>(e);
-		}
-		if (uniform_dist2(rng2) < 4)
-		{
-			V_ECS.AddComponent<Rotation>(e);
-		}
-		if (uniform_dist2(rng2) < 4)
-		{
-
-			C1 dummy1;
-			dummy1.x = 1.0f;
-			dummy1.y = 2.0f;
-			dummy1.z = 0.5f;
-			V_ECS.accomodate<C1>(e, dummy1);
-		}
-		if (uniform_dist2(rng2) < 4)
-		{
-			C2 dummy1;
-			dummy1.x = 1.0f;
-			dummy1.y = 2.0f;
-			dummy1.z = 0.5f;
-			V_ECS.accomodate<C2>(e, dummy1);
-		}
-		if (uniform_dist2(rng2) < 4)
-		{
-			C3 dummy1;
-			dummy1.x = 1.0f;
-			dummy1.y = 2.0f;
-			dummy1.z = 0.5f;
-			V_ECS.accomodate<C3>(e, dummy1);
-		}
-
-		if (uniform_dist(rng) < 4)
-		{
-			V_ECS.AddComponent<comp<1>>(e);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			V_ECS.AddComponent<comp<2>>(e);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			V_ECS.AddComponent<comp<3>>(e);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			V_ECS.AddComponent<comp<4>>(e);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			V_ECS.AddComponent<comp<5>>(e);
-		}
-
-	}
 	//auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
-	for (int i = 0; i < 1; i++)
-	{
-		timer tim;
+	auto view = Entt_ECS.persistent_view<C1, C2, C3>();
+	view.initialize();
 
-		int compares = 0;
-		Entt_ECS.view<C1, C2, C3>().each([&](auto entity, auto c2, auto c3, auto c4) {
-			compares += uniform_dist(rng) +c2.x +c3.z+c4.y;
-		});
-		double Entt_creation = tim.elapsed();
-		int compares2 = 0;
-		V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
+	timer tim;
 
-			auto ap = block.GetComponentArray<C1>();
-			auto ar = block.GetComponentArray<C2>();
-			auto a3 = block.GetComponentArray<C3>();
-			for (int i = 0; i < block.last; i++)
-			{
-				compares2 += uniform_dist2(rng2) + ap.Get(i).x + ar.Get(i).z + a3.Get(i).y;
-			}
-		});
+	int compares = 0;
+	view.each([&](auto entity, auto &c2, auto &c3, auto &c4) {
+		compares++;
+		c2.x = c3.y * c4.z;
+	});
+	double Entt_creation = tim.elapsed();
+	int compares2 = 0;
+	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
+		auto ap = block.GetComponentArray<C1>();
+		auto ar = block.GetComponentArray<C2>();
+		auto c1 = block.GetComponentArray<C3>();
 
-		double Decs_creation = tim.elapsed();
+		for (int i = 0; i < block.last; i++)
+		{
+			compares2++;
+			ap.Get(i).x = ar.Get(i).y * c1.Get(i).z;
+		}
+	});
+	double Decs_creation = tim.elapsed();
 
-		cout << "Sum: " << compares << ":" << compares2 << endl;		
-		Print_Comparaision(Entt_creation, Decs_creation);
-	}
+	int compares3 = 0;
+	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
+		auto ap = block.GetComponentArray<C1>();
+		auto ar = block.GetComponentArray<C2>();
+		auto c1 = block.GetComponentArray<C3>();
 
+		for (int i = 0; i < block.last; i++)
+		{
+			compares3++;
+			ap.Get(i).x = ar.Get(i).y * c1.Get(i).z;
+		}
+	}, true);
+	tim.elapsed();
+	compares3 = 0;
+	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
+
+		//auto ap = block.GetComponentArray<Position>();
+		//      auto ar = block.GetComponentArray<Rotation>();
+		for (int i = 0; i < block.last; i++)
+		{
+			compares3 += uniform_dist(rng);
+		}
+	}, true);
+
+	double Decs_parallel = tim.elapsed();
+
+	cout << "Total Iterations: " << compares << ":" << compares2 << endl;
+	cout << "    Decs Parallel: " << Decs_parallel << "ms" << endl;
+	Print_Comparaision(Entt_creation, Decs_creation);
 }
 
 int main()
 {
-	for (int i = 0; i < 100; i++)
+	for (int i = 0; i < 1; i++)
 	{
 		//Compare_Creation();
-	
-	cout << "===========Comparing Decs against Entt ================" << endl << endl;
-	Compare_CreationDeletion();
-	Compare_ComponentAdd();
-	Compare_ComponentRemove();
-	Compare_SimpleIteration();
-	Compare_SimpleIteration_5Comps();
-	Compare_Iteration_Pathological();
+
+		cout << "===========Comparing Decs against Entt ================" << endl << endl;
+		Compare_CreationDeletion();
+		Compare_ComponentAdd();
+		Compare_ComponentRemove();
+		Compare_SimpleIteration();
+		Compare_SimpleIteration_5Comps();
+		Compare_Iteration_Pathological();
 	}
 
 	char a;
