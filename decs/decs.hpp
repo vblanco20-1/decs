@@ -822,10 +822,7 @@ struct ECSWorld {
 			index = Entities.size();
 			newEntity.generation = 1;
 		}
-		if (index == 2048)
-		{
-			std::cout << "error";
-		}
+		
 
 		ArchetypeBlock * entityBlock = FindOrCreateBlockForArchetype(arc);
 

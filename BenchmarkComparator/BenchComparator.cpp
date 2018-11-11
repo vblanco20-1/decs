@@ -340,15 +340,27 @@ void Compare_Iteration_Pathological()
 		}
 		if (uniform_dist(rng) < 4)
 		{
-			Entt_ECS.assign<C1>(e);
+			C1 dummy1;
+			dummy1.x = 1.0f;
+			dummy1.y = 2.0f;
+			dummy1.z = 0.5f;
+			Entt_ECS.accommodate<C1>(e, dummy1);
 		}
 		if (uniform_dist(rng) < 4)
 		{
-			Entt_ECS.assign<C2>(e);
+			C2 dummy1;
+			dummy1.x = 1.0f;
+			dummy1.y = 2.0f;
+			dummy1.z = 0.5f;
+			Entt_ECS.accommodate<C2>(e, dummy1);
 		}
 		if (uniform_dist(rng) < 4)
 		{
-			Entt_ECS.assign<C3>(e);
+			C3 dummy1;
+			dummy1.x = 1.0f;
+			dummy1.y = 2.0f;
+			dummy1.z = 0.5f;
+			Entt_ECS.accommodate<C3>(e, dummy1);
 		}	
 		if (uniform_dist(rng) < 4)
 		{
@@ -386,15 +398,28 @@ void Compare_Iteration_Pathological()
 		}
 		if (uniform_dist2(rng2) < 4)
 		{
-			V_ECS.AddComponent<C1>(e);
+
+			C1 dummy1;
+			dummy1.x = 1.0f;
+			dummy1.y = 2.0f;
+			dummy1.z = 0.5f;
+			V_ECS.accomodate<C1>(e, dummy1);
 		}
 		if (uniform_dist2(rng2) < 4)
 		{
-			V_ECS.AddComponent<C2>(e);
+			C2 dummy1;
+			dummy1.x = 1.0f;
+			dummy1.y = 2.0f;
+			dummy1.z = 0.5f;
+			V_ECS.accomodate<C2>(e, dummy1);
 		}
 		if (uniform_dist2(rng2) < 4)
 		{
-			V_ECS.AddComponent<C3>(e);
+			C3 dummy1;
+			dummy1.x = 1.0f;
+			dummy1.y = 2.0f;
+			dummy1.z = 0.5f;
+			V_ECS.accomodate<C3>(e, dummy1);
 		}
 
 		if (uniform_dist(rng) < 4)
@@ -420,53 +445,33 @@ void Compare_Iteration_Pathological()
 
 	}
 	//auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
+	for (int i = 0; i < 1; i++)
+	{
+		timer tim;
 
-	timer tim;
+		int compares = 0;
+		Entt_ECS.view<C1, C2, C3>().each([&](auto entity, auto c2, auto c3, auto c4) {
+			compares += uniform_dist(rng) +c2.x +c3.z+c4.y;
+		});
+		double Entt_creation = tim.elapsed();
+		int compares2 = 0;
+		V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
 
-	int compares = 0;
-	Entt_ECS.view<C1, C2, C3>().each([&](auto entity,auto c2, auto c3, auto c4) {
-		compares += uniform_dist(rng);
-	});
-	double Entt_creation = tim.elapsed();
-	int compares2 = 0;
-	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
+			auto ap = block.GetComponentArray<C1>();
+			auto ar = block.GetComponentArray<C2>();
+			auto a3 = block.GetComponentArray<C3>();
+			for (int i = 0; i < block.last; i++)
+			{
+				compares2 += uniform_dist2(rng2) + ap.Get(i).x + ar.Get(i).z + a3.Get(i).y;
+			}
+		});
 
-		//auto ap = block.GetComponentArray<Position>();
-		//	auto ar = block.GetComponentArray<Rotation>();
-		for (int i = 0; i < block.last; i++)
-		{
-			compares2+= uniform_dist2(rng2);
-		}
-	});
-	double Decs_creation = tim.elapsed();
+		double Decs_creation = tim.elapsed();
 
-	int compares3 = 0;
-	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
+		cout << "Sum: " << compares << ":" << compares2 << endl;		
+		Print_Comparaision(Entt_creation, Decs_creation);
+	}
 
-		//auto ap = block.GetComponentArray<Position>();
-		//	auto ar = block.GetComponentArray<Rotation>();
-		for (int i = 0; i < block.last; i++)
-		{
-			compares3 += uniform_dist2(rng2);
-		}
-	},true);
-	tim.elapsed();
-	compares3 = 0;
-	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
-
-		//auto ap = block.GetComponentArray<Position>();
-		//	auto ar = block.GetComponentArray<Rotation>();
-		for (int i = 0; i < block.last; i++)
-		{
-			compares3 += uniform_dist2(rng2);
-		}
-	}, true);
-
-	double Decs_parallel = tim.elapsed();
-
-	cout << "Total Iterations: " << compares << ":" << compares2 << endl;
-	cout <<"    Decs Parallel: " << Decs_parallel <<"ms"  << endl;
-	Print_Comparaision(Entt_creation, Decs_creation);
 }
 
 int main()
