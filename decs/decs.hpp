@@ -16,13 +16,14 @@
 using ComponentGUID = uint64_t;
 
 struct Metatype {
-	size_t name_hash;
-	size_t size;
-	size_t align;
-	const char * name;
+	size_t name_hash{0};
+	size_t size{0};
+	size_t align{0};
+	const char * name{"none"};
+	
 
 	template<typename T>
-	static Metatype BuildMetatype() {
+	constexpr static Metatype BuildMetatype() {
 
 		Metatype meta;
 
@@ -63,6 +64,11 @@ struct ComponentList {
 		return key;
 	};
 
+	void sort() {
+		std::sort(metatypes.begin(),metatypes.end(),[](auto left, auto right){
+		return left.name_hash < right.name_hash;
+		});
+	}
 
 	void BuildHash() {
 		cached_hash = 0;
@@ -85,6 +91,9 @@ struct Archetype {
 		{
 			componentlist.metatypes.push_back(c);
 		}
+		componentlist.sort();
+		componentlist.BuildHash();
+		
 		return *this;
 	}
 
@@ -95,11 +104,15 @@ struct Archetype {
 	template<typename C>
 	void SetAdd(const Archetype &rhs)
 	{
+		static const Metatype m(Metatype::BuildMetatype<C>());
+
 		//Archetype arc;
 		componentlist.metatypes.clear();
 		componentlist.metatypes.reserve(rhs.componentlist.metatypes.size() + 1);
 		bool added = false;
-		auto m = Metatype::BuildMetatype<C>();
+
+	
+
 		for (auto c : rhs.componentlist.metatypes)
 		{
 			componentlist.metatypes.push_back(c);
@@ -111,23 +124,25 @@ struct Archetype {
 		{
 			componentlist.metatypes.push_back(Metatype::BuildMetatype<C>());
 		}
-
+		componentlist.sort();
 		componentlist.BuildHash();
 		//return std::move(arc);
 	}
 	template<typename C>
 	void SetRemove(const Archetype &rhs)
 	{
+		static const Metatype m(Metatype::BuildMetatype<C>());
+
 		componentlist.metatypes.clear();
 		componentlist.metatypes.reserve(rhs.componentlist.metatypes.size());
-		auto m = Metatype::BuildMetatype<C>();
+		
 		for (auto c : rhs.componentlist.metatypes)
 		{
 			if (c.name_hash != m.name_hash) {
 				componentlist.metatypes.push_back(c);
 			}
 		}
-
+		componentlist.sort();
 		componentlist.BuildHash();
 		//return std::move(arc);
 	}
@@ -148,6 +163,7 @@ struct Archetype {
 
 		componentlist.metatypes.push_back(mt);
 
+		componentlist.sort();
 		componentlist.BuildHash();
 	}
 	template<typename C>
@@ -167,7 +183,7 @@ struct Archetype {
 		}
 
 		componentlist = newList;//.metatypes.push_back(mt);
-
+		componentlist.sort();
 		componentlist.BuildHash();
 	}
 
@@ -175,23 +191,45 @@ struct Archetype {
 	{
 
 		int matches = 0;
-		for (auto c : Components.metatypes)
-		{
-			bool bFound = false;
-			for (auto a : componentlist.metatypes)
-			{
-				if (a.name_hash == c.name_hash)
-				{
-					bFound = true;
-					break;
-				}
-			}
-			if (bFound)
+		const auto & A_Met = Components.metatypes;
+		const auto & B_Met = componentlist.metatypes;
+		int iA = 0;
+		int iB = 0;
+		while (iA < A_Met.size() && iB < B_Met.size()) {
+			const size_t hashA = A_Met[iA].name_hash;
+			const size_t hashB = B_Met[iB].name_hash;
+			if (hashA == hashB)
 			{
 				matches++;
+				iA++;
+				iB++;
 			}
-
+			else {
+				if (hashA < hashB) {
+					iA++;
+				}
+				else {
+					iB++;
+				}
+			}
 		}
+		//for (auto c : Components.metatypes)
+		//{
+		//	bool bFound = false;
+		//	for (auto a : componentlist.metatypes)
+		//	{
+		//		if (a.name_hash == c.name_hash)
+		//		{
+		//			bFound = true;
+		//			break;
+		//		}
+		//	}
+		//	if (bFound)
+		//	{
+		//		matches++;
+		//	}
+		//
+		//}
 		return matches;
 	}
 
@@ -207,22 +245,29 @@ struct Archetype {
 		{
 			return true;
 		}
-		for (auto c : Components.metatypes)
+		for (int i = 0; i < Components.metatypes.size(); i++)
 		{
-			bool bFound = false;
-			for (auto a : componentlist.metatypes)
-			{
-				if (a.name_hash == c.name_hash)
-				{
-					bFound = true;
-				}
-			}
-			if (!bFound)
+			if (Components.metatypes[i].name_hash != componentlist.metatypes[i].name_hash)
 			{
 				return false;
 			}
-
 		}
+		//for (auto c : Components.metatypes)
+		//{
+		//	bool bFound = false;
+		//	for (auto a : componentlist.metatypes)
+		//	{
+		//		if (a.name_hash == c.name_hash)
+		//		{
+		//			bFound = true;
+		//		}
+		//	}
+		//	if (!bFound)
+		//	{
+		//		return false;
+		//	}
+		//
+		//}
 		return true;
 	}
 
@@ -704,6 +749,7 @@ struct ECSWorld {
 		ArchetypeBlock * entityBlock = nullptr;
 		//find the free block	
 		const size_t numComponents = arc.componentlist.metatypes.size();
+		
 
 		//for (ArchetypeBlockStorage & b : BlockStorage)
 		for (size_t i = 0; i < BlockStorage.size(); i++)

@@ -388,7 +388,7 @@ void Compare_Iteration_Pathological()
 		}
 	}
 
-	//auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
+	auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
 	auto view = Entt_ECS.persistent_view<C1, C2, C3>();
 	//view.initialize();
 
@@ -450,14 +450,14 @@ void Compare_Iteration_Pathological()
 
 int main()
 {
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < 10; i++)
 	{
 		//Compare_Creation();
 
-		cout << "===========Comparing Decs against Entt ================" << endl << endl;
-		Compare_CreationDeletion();
-		Compare_ComponentAdd();
-		Compare_ComponentRemove();
+		//cout << "===========Comparing Decs against Entt ================" << endl << endl;
+		//Compare_CreationDeletion();
+		//Compare_ComponentAdd();
+		//Compare_ComponentRemove();
 		Compare_SimpleIteration();
 		Compare_SimpleIteration_5Comps();
 		Compare_Iteration_Pathological();
