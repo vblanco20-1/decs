@@ -314,6 +314,10 @@ struct TypedArchetypeComponentArray {
 struct EntityHandle {
 	size_t id;
 	size_t generation;
+	EntityHandle() {
+		id = -1;
+		generation = -1;
+	}
 	bool operator ==(const EntityHandle &b) const {
 		return id == b.id && generation == b.generation;
 	}
@@ -380,7 +384,7 @@ struct ArchetypeBlock {
 		assert(pos < myArch.ARRAY_SIZE);
 
 		entities[pos] = handle;
-		
+
 		//last++;
 		newets++;
 		//entities[last].generation = 7;
@@ -413,7 +417,7 @@ struct ArchetypeBlock {
 		//	last++;
 		//}
 	}
-	
+
 	EntityHandle GetLastEntity() {
 		return entities[last - 1];
 	}
@@ -421,6 +425,8 @@ struct ArchetypeBlock {
 		return myArch.ARRAY_SIZE - last - newets;
 	}
 	void refresh(uint64_t iterationIDX) {
+		//assert(canary ==)
+		assert(canary == 0xDEADBEEF);
 		lastIteration = iterationIDX;
 		last += newets;
 		newets = 0;
@@ -434,7 +440,7 @@ struct ArchetypeBlock {
 	int16_t last{ 0 };
 	//new entities that shouldnt be iterated yet
 	int16_t newets{ 0 };
-	uint64_t lastIteration{0};
+	uint64_t lastIteration{ 0 };
 
 	//linked list
 	//ArchetypeBlock * prev;
@@ -446,7 +452,7 @@ struct ArchetypeBlock {
 
 struct ArchetypeBlockStorage {
 
-	
+
 	Archetype myArch;
 	int nblocks;
 	ArchetypeBlockStorage(const Archetype & arch) {
@@ -523,10 +529,11 @@ struct ArchetypeBlockStorage {
 
 		for (auto it = block_colony.begin(); it != block_colony.end(); ++it)
 		{
+			assert(it->canary == 0xDEADBEEF);
 			it->refresh(0);
 			if (it->last != 0)
 			{
-				
+
 				blocks.push_back(&(*it));
 			}
 
@@ -588,7 +595,7 @@ struct ECSWorld {
 
 
 	std::vector<ArchetypeBlock*> IterationBlocks;
-	uint64_t iterationIdx{0};
+	uint64_t iterationIdx{ 0 };
 	template<typename F>
 	void IterateBlocks(const ComponentList &AllOfList, const ComponentList& NoneOfList, F && f, bool bParallel = false) {
 		iterationIdx++;
@@ -603,20 +610,25 @@ struct ECSWorld {
 			{
 				if (b.myArch.Match(NoneOfList) == 0)
 				{
-					
+
 					b.AddBlocksToList(IterationBlocks);
 					//b.Iterate(f);
 					//f(b);
 				}
 			}
 		}
-		
 
+		//std::for_each(IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
+		//	assert(bk->last <= Archetype::ARRAY_SIZE);
+		//	assert(bk->canary == 0xDEADBEEF);
+		//	//f(*bk);
+		//});
 		if (bParallel)
 		{
 			std::for_each(std::execution::par, IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
-				
+
 				assert(bk->last <= Archetype::ARRAY_SIZE);
+				assert(bk->canary == 0xDEADBEEF);
 				f(*bk);
 			});
 		}
@@ -624,6 +636,7 @@ struct ECSWorld {
 		{
 			std::for_each(IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
 				assert(bk->last <= Archetype::ARRAY_SIZE);
+				assert(bk->canary == 0xDEADBEEF);
 				f(*bk);
 			});
 		}
@@ -646,12 +659,13 @@ struct ECSWorld {
 				//b.Iterate(f);
 			}
 		}
-		
+
 
 		if (bParallel)
 		{
 			std::for_each(std::execution::par, IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
 				assert(bk->last <= Archetype::ARRAY_SIZE);
+				assert(bk->canary == 0xDEADBEEF);
 				f(*bk);
 			});
 		}
@@ -659,6 +673,7 @@ struct ECSWorld {
 		{
 			std::for_each(IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
 				assert(bk->last <= Archetype::ARRAY_SIZE);
+				assert(bk->canary == 0xDEADBEEF);
 				f(*bk);
 			});
 		}
@@ -802,7 +817,7 @@ struct ECSWorld {
 			index = Entities.size();
 			newEntity.generation = 1;
 		}
-		
+
 
 		ArchetypeBlock * entityBlock = FindOrCreateBlockForArchetype(arc);
 
@@ -876,12 +891,12 @@ struct ECSWorld {
 		oldBlock->refresh(0);
 		auto oldpos = et.blockindex;
 		EntityHandle Swapped;
-		
+
 		if (RemoveAndSwapFromBlock(oldpos, *oldBlock, Swapped))
 		{
 			oldBlock->storage->DeleteBlock(oldBlock);
 		}
-		if (Valid(Swapped,false))
+		if (Valid(Swapped, false))
 		{
 			Entities[Swapped.id].blockindex = oldpos;
 		}
@@ -895,28 +910,28 @@ struct ECSWorld {
 	//returns true if the block got deleted
 	bool RemoveAndSwapFromBlock(uint64_t idx, ArchetypeBlock & Block, EntityHandle & SwappedEntity) {
 		assert(Block.entities[idx].generation != -1);
-
+		assert(idx < Block.last + Block.newets);
 		//shrink
 		//if (newets != 0)
 		{
-		//	newets--;
+			//	newets--;
 		}
 		bool bIsInitialized = false;
 		if (idx < Block.last)
 		{
 			bIsInitialized = true;
 		}
-		uint16_t swap_entity = (Block.last+ Block.newets) - 1;
+		uint16_t swap_entity = (Block.last + Block.newets) - 1;
 
 
 		if (bIsInitialized)
-		{			
+		{
 			Block.last--;
 		}
 		else {
 			Block.newets--;
 		}
-		
+
 
 		assert(Block.canary == 0xDEADBEEF);
 
@@ -952,19 +967,19 @@ struct ECSWorld {
 		return false;
 	}
 
-	bool Valid(EntityHandle entity, bool perform_asserts=true)
+	bool Valid(EntityHandle entity, bool perform_asserts = true)
 	{
-		
-		if(perform_asserts) assert(entity.id < Entities.size());
-		if(entity.id >= Entities.size()) return false;
+
+		if (perform_asserts) assert(entity.id < Entities.size());
+		if (entity.id >= Entities.size()) return false;
 		const EntityStorage & et = Entities[entity.id];
 		if (et.block != nullptr)
 		{
-			if(perform_asserts) assert(et.block->canary == 0xDEADBEEF);
-			if(et.block->canary != 0xDEADBEEF) return false;
+			if (perform_asserts) assert(et.block->canary == 0xDEADBEEF);
+			if (et.block->canary != 0xDEADBEEF) return false;
 		}
-		if(perform_asserts)assert(et.blockindex <= Archetype::ARRAY_SIZE);
-		if(perform_asserts)assert(et.blockindex >= 0);
+		if (perform_asserts)assert(et.blockindex <= Archetype::ARRAY_SIZE);
+		if (perform_asserts)assert(et.blockindex >= 0);
 
 		//valid entity
 		return (et.generation == entity.generation  && et.block != nullptr && et.block->last + et.block->newets <= Archetype::ARRAY_SIZE);
@@ -997,10 +1012,10 @@ struct ECSWorld {
 		EntityHandle SwapEntity;// = oldBlock->GetLastEntity();
 
 
-		
 
 
-		if (RemoveAndSwapFromBlock(oldpos, *oldBlock,SwapEntity))
+
+		if (RemoveAndSwapFromBlock(oldpos, *oldBlock, SwapEntity))
 		{
 			//if (bIsIterating)
 			//{
@@ -1013,7 +1028,7 @@ struct ECSWorld {
 			//}
 			//oldBlock->storage->DeleteBlock(oldBlock);	
 		}
-		if (Valid(SwapEntity,false))
+		if (Valid(SwapEntity, false))
 		{
 			Entities[SwapEntity.id].blockindex = oldpos;
 		}
