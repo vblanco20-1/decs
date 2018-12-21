@@ -276,14 +276,14 @@ void Compare_SimpleIteration_5Comps()
 
 	auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
 	auto view = Entt_ECS.persistent_view<Position, Rotation, C1, C2, C3>();
-	view.initialize();
+	//view.initialize();
 
 	timer tim;
 
 	int compares = 0;
 	view.each([&](auto entity, auto &c, auto &c1, auto &c2, auto &c3, auto &c4) {
 		c.x = c1.y * c2.z;
-		compares++;
+		compares+= c.x;
 	});
 	double Entt_creation = tim.elapsed();
 
@@ -296,7 +296,7 @@ void Compare_SimpleIteration_5Comps()
 		for (int i = 0; i < block.last; i++)
 		{
 			ap.Get(i).x = ar.Get(i).y * c1.Get(i).z;
-			compares2++;
+			compares2+= ap.Get(i).x;
 		}
 	});
 	double Decs_creation = tim.elapsed();
@@ -390,7 +390,7 @@ void Compare_Iteration_Pathological()
 
 	//auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
 	auto view = Entt_ECS.persistent_view<C1, C2, C3>();
-	view.initialize();
+	//view.initialize();
 
 	timer tim;
 
@@ -430,11 +430,14 @@ void Compare_Iteration_Pathological()
 	compares3 = 0;
 	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
 
-		//auto ap = block.GetComponentArray<Position>();
-		//      auto ar = block.GetComponentArray<Rotation>();
+		auto ap = block.GetComponentArray<C1>();
+		auto ar = block.GetComponentArray<C2>();
+		auto c1 = block.GetComponentArray<C3>();
+
 		for (int i = 0; i < block.last; i++)
 		{
-			compares3 += uniform_dist(rng);
+			compares3++;
+			ap.Get(i).x = ar.Get(i).y * c1.Get(i).z;
 		}
 	}, true);
 
@@ -447,7 +450,7 @@ void Compare_Iteration_Pathological()
 
 int main()
 {
-	for (int i = 0; i < 1; i++)
+	for (int i = 0; i < 3; i++)
 	{
 		//Compare_Creation();
 
