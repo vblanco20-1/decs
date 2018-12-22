@@ -16,11 +16,16 @@
 using ComponentGUID = uint64_t;
 
 struct Metatype {
+
+	using ConstructorFn = void(void*);
+	using DestructorFn = void(void*);
+
 	size_t name_hash{0};
 	size_t size{0};
 	size_t align{0};
 	const char * name{"none"};
-	
+	ConstructorFn *constructor;
+	DestructorFn *destructor;
 
 	template<typename T>
 	constexpr static Metatype BuildMetatype() {
@@ -31,6 +36,13 @@ struct Metatype {
 		meta.name = typeid(T).name();
 		meta.size = sizeof(T);
 		meta.align = alignof(T);
+
+		meta.constructor = [](void* p) {
+			new(p) T{};
+		};
+		meta.destructor = [](void* p) {
+			((T*)p)->~T();
+		};
 
 		return meta;
 	}
@@ -324,7 +336,14 @@ struct ArchetypeComponentArray {
 
 		memcpy(pdst, psrc, metatype.size);
 	}
-
+	void Create(uint64_t idx) {
+		void* ptr = (char*)data + idx * metatype.size;
+		metatype.constructor(ptr);
+	}
+	void Destroy(uint64_t idx) {
+		void* ptr = (char*)data + idx * metatype.size;
+		metatype.destructor(ptr);
+	}
 	//copy from a different array
 	void CopyFromOuter(uint64_t src, uint64_t dst, ArchetypeComponentArray * other)
 	{
@@ -428,7 +447,7 @@ struct ArchetypeBlock {
 		uint16_t pos = last + newets;
 		assert(pos < myArch.ARRAY_SIZE);
 
-		entities[pos] = handle;
+		entities[pos] = handle;		
 
 		//last++;
 		newets++;
@@ -436,6 +455,29 @@ struct ArchetypeBlock {
 		return pos;
 	}
 
+	void InitializeEntity(uint64_t entity) {
+		for (auto &clist : componentArrays)
+		{
+			clist.Create(entity);
+		}
+	}
+	void DestroyEntity(uint64_t entity) {
+		for (auto &clist : componentArrays)
+		{
+			clist.Destroy(entity);
+		}
+	}
+
+	void DestroyAll() {
+		for (uint64_t i = 0; i < last + newets; i++)
+		{
+			for (auto &clist : componentArrays)
+			{
+				clist.Destroy(i);
+			}
+		}
+		
+	}
 	//copy a entity from a different block into this one
 	void CopyEntityFromBlock(uint64_t destEntity, uint64_t srcEntity, ArchetypeBlock * otherblock)
 	{
@@ -549,6 +591,7 @@ struct ArchetypeBlockStorage {
 			//{
 			if (&(*it) == blk)
 			{
+				it->DestroyAll();
 				it->last = 0;
 				block_colony.erase(it);
 				bDeleted = true;
@@ -824,6 +867,7 @@ struct ECSWorld {
 				}
 
 				uint16_t pos = entityBlock->AddEntity(newEntity);
+				entityBlock->InitializeEntity(pos);
 
 				EntityStorage et;
 				et.block = entityBlock;
@@ -869,6 +913,7 @@ struct ECSWorld {
 
 		//insert entity handle into the block
 		uint16_t pos = entityBlock->AddEntity(newEntity);
+		entityBlock->InitializeEntity(pos);
 
 		EntityStorage et;
 		et.block = entityBlock;
@@ -884,7 +929,7 @@ struct ECSWorld {
 			index = Entities.size() - 1;
 		}
 
-
+		
 		ArchetypeBlock* block = Entities[newEntity.id].block;
 		auto blockidx = Entities[newEntity.id].blockindex;
 		assert(block->entities[blockidx] == newEntity);
@@ -906,6 +951,7 @@ struct ECSWorld {
 			//newarch.AddComponent<C>();
 			//Archetype newarch = Archetype::CreateAdd<C>(et.block->myArch);
 			SetEntityArchetype(entity, cached);// newarch);
+			new(&GetComponent<C>(entity)) C{};
 		}
 	}
 	template<typename C>
@@ -921,7 +967,7 @@ struct ECSWorld {
 			//Archetype newarch = Archetype::CreateRemove<C>(et.block->myArch);// et.block->myArch;
 			//newarch.RemoveComponent<C>();
 
-
+			GetComponent<C>(entity).~C();
 			SetEntityArchetype(entity, cached);
 			//ValidateAll();
 
@@ -938,6 +984,7 @@ struct ECSWorld {
 		auto oldpos = et.blockindex;
 		EntityHandle Swapped;
 
+		oldBlock->DestroyEntity(oldpos);
 		if (RemoveAndSwapFromBlock(oldpos, *oldBlock, Swapped))
 		{
 			oldBlock->storage->DeleteBlock(oldBlock);
@@ -946,6 +993,7 @@ struct ECSWorld {
 		{
 			Entities[Swapped.id].blockindex = oldpos;
 		}
+		
 		deletedEntities.push_back(entity.id);
 
 		et.block = nullptr;
@@ -969,6 +1017,7 @@ struct ECSWorld {
 		}
 		uint16_t swap_entity = (Block.last + Block.newets) - 1;
 
+		
 
 		if (bIsInitialized)
 		{

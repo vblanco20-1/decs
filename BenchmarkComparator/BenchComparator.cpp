@@ -71,12 +71,25 @@ void Compare_CreationDeletion()
 }
 
 
+struct Screamer {
+
+	Screamer() {
+	x = 0; 
+	y = 1;
+	z = 2;
+	}
+	~Screamer() {
+	//	std::cout << "destroy";
+	}
+	
+	float x, y, z;
+};
 
 
 void Compare_ComponentAdd()
 {
 	ECSWorld V_ECS;
-	V_ECS.BlockStorage.reserve(100);
+	V_ECS.BlockStorage.reserve(10000);
 	entt::registry<> Entt_ECS;
 
 	Archetype EmptyArchetype;
@@ -103,7 +116,8 @@ void Compare_ComponentAdd()
 
 	for (auto e : handles)
 	{
-		V_ECS.AddComponent<Position>(e);
+		V_ECS.AddComponent<Screamer>(e); 
+		
 	}
 	double Decs_creation = tim.elapsed();
 
@@ -450,14 +464,14 @@ void Compare_Iteration_Pathological()
 
 int main()
 {
-	for (int i = 0; i < 10; i++)
+	for (int i = 0; i < 3; i++)
 	{
 		//Compare_Creation();
 
 		//cout << "===========Comparing Decs against Entt ================" << endl << endl;
-		//Compare_CreationDeletion();
-		//Compare_ComponentAdd();
-		//Compare_ComponentRemove();
+		Compare_CreationDeletion();
+		Compare_ComponentAdd();
+		Compare_ComponentRemove();
 		Compare_SimpleIteration();
 		Compare_SimpleIteration_5Comps();
 		Compare_Iteration_Pathological();
