@@ -32,7 +32,7 @@ struct Metatype {
 
 		Metatype meta;
 
-		meta.name_hash = typeid(T).hash_code(); //(size_t)T::GUID();
+		meta.name_hash = typeid(T).hash_code(); 
 		meta.name = typeid(T).name();
 		meta.size = sizeof(T);
 		meta.align = alignof(T);
