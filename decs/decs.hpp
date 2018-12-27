@@ -71,7 +71,7 @@ protected:
 struct ComponentList {
 	std::vector<Metatype> metatypes;
 
-	long hash64shift(long key)
+	size_t hash64shift(size_t key)
 	{
 		key = (~key) + (key << 21); // key = (key << 21) - key - 1;
 		key = key ^ (key >> 24);
@@ -83,6 +83,22 @@ struct ComponentList {
 		return key;
 	};
 
+
+	inline const uint64_t hash_64_fnv1a(const void* key, const uint64_t len) {
+
+		const char* data = (char*)key;
+		uint64_t hash = 0xcbf29ce484222325;
+		uint64_t prime = 0x100000001b3;
+
+		for (int i = 0; i < len; ++i) {
+			uint8_t value = data[i];
+			hash = hash ^ value;
+			hash *= prime;
+		}
+
+		return hash;
+
+	}
 	void sort() {
 		std::sort(metatypes.begin(),metatypes.end(),[](auto left, auto right){
 		return left.name_hash < right.name_hash;
@@ -91,12 +107,14 @@ struct ComponentList {
 
 	void BuildHash() {
 		cached_hash = 0;
-
+		and_hash = 0;
 		for (auto m : metatypes)
 		{
-			long hash = hash64shift(m.name_hash);
-			cached_hash ^= hash;
-			and_hash &= hash;
+			//size_t hash = hash64shift(m.name_hash);
+			cached_hash += m.name_hash;
+			size_t keyhash = hash_64_fnv1a(&m.name_hash,sizeof(size_t));
+			and_hash |= 0x1L << ((keyhash )% 63);
+
 		}
 
 	}
@@ -250,10 +268,10 @@ struct Archetype {
 		{
 			return false;
 		}
-		else if (Components.metatypes.size() == 0)
-		{
-			return true;
-		}
+		//else if (Components.metatypes.size() == 0)
+		//{
+		//	return true;
+		//}
 		for (int i = 0; i < Components.metatypes.size(); i++)
 		{
 			if (Components.metatypes[i].name_hash != componentlist.metatypes[i].name_hash)
@@ -792,10 +810,17 @@ struct EntityStorage {
 	ArchetypeBlock * block{ nullptr };
 	uint16_t blockindex{ 0 };
 };
+
+
 struct ECSWorld {
 
+	bool MatchAndHash(size_t ListHash, size_t MatchHash) {
 
+		const size_t andhash = ListHash & MatchHash;
+		return andhash == MatchHash;
+	}
 	std::vector<ArchetypeBlock*> IterationBlocks;
+	
 	uint64_t iterationIdx{ 0 };
 	template<typename F>
 	void IterateBlocks(const ComponentList &AllOfList, const ComponentList& NoneOfList, F && f, bool bParallel = false) {
@@ -803,21 +828,30 @@ struct ECSWorld {
 		//bParallel = false;
 		IterationBlocks.resize(0);
 		IterationBlocks.reserve(1000);
+		
 
 		bIsIterating = true;
-		for (ArchetypeBlockStorage & b : BlockStorage)
+		for (size_t i = 0; i < BlockStorage.size(); i++)
 		{
-			if (b.myArch.MatchAndHash(AllOfList) && b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
+		//block needs to have the same amount of components, and match all of them
+			if (MatchAndHash(BlockANDHashes[i], AllOfList.and_hash))
 			{
-				if (b.myArch.Match(NoneOfList) == 0)
-				{
+				ArchetypeBlockStorage & b = BlockStorage[i];
+					if (b.myArch.MatchAndHash(AllOfList) && b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
+					{
+						if (b.myArch.Match(NoneOfList) == 0)
+						{
 
-					b.AddBlocksToList(IterationBlocks);
-					//b.Iterate(f);
-					//f(b);
-				}
+							b.AddBlocksToList(IterationBlocks);
+								//b.Iterate(f);
+								//f(b);
+						}
+							//b.Iterate(f);
+					}
 			}
 		}
+
+		
 
 		//std::for_each(IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
 		//	
@@ -853,14 +887,25 @@ struct ECSWorld {
 		IterationBlocks.resize(0);
 		IterationBlocks.reserve(1000);
 		bIsIterating = true;
-		for (ArchetypeBlockStorage & b : BlockStorage)
+		size_t hashes = 0;
+		size_t matches= 0;
+		size_t truematches= 0;
+		for (size_t i = 0; i < BlockStorage.size(); i++)
 		{
-			if (b.myArch.MatchAndHash(AllOfList) && b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
-			{
-				b.AddBlocksToList(IterationBlocks);
-				//b.Iterate(f);
+			hashes++;
+			//block needs to have the same amount of components, and match all of them
+			if (MatchAndHash(BlockANDHashes[i], AllOfList.and_hash))
+			{			
+				matches++;
+				ArchetypeBlockStorage & b = BlockStorage[i];
+				if (b.myArch.MatchAndHash(AllOfList) && b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
+				{
+					b.AddBlocksToList(IterationBlocks);
+						//b.Iterate(f);
+				}
 			}
 		}
+		//std::cout << "Iterations: " << hashes << "Matches: " << matches <<" True matches:" <<IterationBlocks.size()  << std::endl;
 		//return;
 
 		if (bParallel)
@@ -907,28 +952,34 @@ struct ECSWorld {
 		//find the free block	
 		const size_t numComponents = arc.componentlist.metatypes.size();
 		
-
+		const size_t blocksize = BlockStorage.size();
 		//for (ArchetypeBlockStorage & b : BlockStorage)
-		for (size_t i = 0; i < BlockStorage.size(); i++)
-		{
-			ArchetypeBlockStorage * b = &BlockStorage[i];
+		for (size_t i = 0; i < blocksize; i++)
+		{			
 			//block needs to have the same amount of components, and match all of them
-			if (b->myArch.ExactMatch(arc.componentlist))
+			if(BlockHashes[i] == arc.componentlist.cached_hash)
 			{
-				entityBlock = b->FindFreeBlock();
-				if (entityBlock == nullptr)
+				ArchetypeBlockStorage * b = &BlockStorage[i];
+				if (b->myArch.ExactMatch(arc.componentlist))
 				{
-					entityBlock = b->CreateNewBlock();
-					break;
+					entityBlock = b->FindFreeBlock();
+					if (entityBlock == nullptr)
+					{
+						entityBlock = b->CreateNewBlock();
+						break;
 
+					}
 				}
 			}
 		}
 		//block not found, create a new one
 		if (entityBlock == nullptr)
 		{
+			
 			//auto str = ArchetypeBlockStorage(arc);
 			BlockStorage.push_back(ArchetypeBlockStorage(arc));
+			BlockHashes.push_back(arc.componentlist.cached_hash);
+			BlockANDHashes.push_back(arc.componentlist.and_hash);
 			entityBlock = BlockStorage[BlockStorage.size() - 1].CreateNewBlock();
 			//entityBlock = CreateBlock(arc);
 		}
@@ -1261,7 +1312,11 @@ struct ECSWorld {
 
 	std::vector<EntityStorage> Entities;
 	std::deque<size_t> deletedEntities;
+
+
 	std::vector<ArchetypeBlockStorage> BlockStorage;
+	std::vector<size_t> BlockHashes;
+	std::vector<size_t> BlockANDHashes;
 	bool bIsIterating{ false };
 	bool bWantsDeletes{ false };
 

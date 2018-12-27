@@ -318,7 +318,14 @@ void Compare_SimpleIteration_5Comps()
 	cout << "Total Iterations: " << compares << ":" << compares2 << endl;
 	Print_Comparaision(Entt_creation, Decs_creation);
 }
-
+float DummyFunction(C1 & ca, C2&cb, C3 & cc)
+{
+	ca.x = cb.x + cc.y;
+	cb.y = ca.z / cc.x;
+	cc.x = ca.x;
+	cc.z = cb.x * cb.y;
+	return cc.z;
+}
 void Compare_Iteration_Pathological(uint64_t numEntities )
 {
 	ECSWorld V_ECS;
@@ -340,8 +347,8 @@ void Compare_Iteration_Pathological(uint64_t numEntities )
 	Cs.AddComponent<C1>();
 	Cs.AddComponent<C2>();
 	Cs.AddComponent<C3>();
-	Cs.AddComponent<comp<1>>();
-	Cs.AddComponent<comp<2>>();
+	//Cs.AddComponent<comp<1>>();
+	//Cs.AddComponent<comp<2>>();
 
 	std::cout << "Iterating entities: pathological random case 10 Component find 5: Num Entities : " << numEntities <<"  -------------------------------" << std::endl;
 
@@ -405,21 +412,23 @@ void Compare_Iteration_Pathological(uint64_t numEntities )
 	}
 
 	//auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
-	auto view = Entt_ECS.persistent_view<C1, C2, C3,comp<1>,comp<2>>();
+	auto view = Entt_ECS.persistent_view<C1, C2, C3/*,,comp<1>,comp<2>*/>();
 	//view.initialize();
 
 	timer tim;
 
-	int compares = 0;
+	long long compares = 0;
 	
 
-	
-	view.each([&](auto entity, auto &c2, auto &c3, auto &c4,auto &c5, auto &c6) {
-		compares++;
-		c2.x = c3.y * c4.z;
+	int nIterationsEnTT = 0;
+	view.each([&](auto entity, auto &c2, auto &c3, auto &c4)
+	{//,auto &c5, auto &c6) {
+		compares+=DummyFunction(c2,c3,c4);
+		nIterationsEnTT++;
 	});
 	double Entt_creation = tim.elapsed();
-	int compares2 = 0;
+	long long  compares2 = 0;
+	int nIterationsDecs = 0;
 	for (int i = 0; i < 1; i++)
 	{
 	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
@@ -429,9 +438,10 @@ void Compare_Iteration_Pathological(uint64_t numEntities )
 
 		for (int i = 0; i < block.last; i++)
 		{
-			compares2++;
-			ap.Get(i).x = ar.Get(i).y * c1.Get(i).z;
-			ap.Get(i).y = ar.Get(i).x / 10;
+			nIterationsDecs++;
+			compares2+=DummyFunction(ap.Get(i),ar.Get(i),c1.Get(i));
+			
+			
 		}
 	});
 	}
@@ -445,9 +455,8 @@ void Compare_Iteration_Pathological(uint64_t numEntities )
 
 		for (int i = 0; i < block.last; i++)
 		{
-			compares3++;
-			ap.Get(i).x = ar.Get(i).y * c1.Get(i).z;
-			ap.Get(i).y = ar.Get(i).x / 10;
+			//compares3++;
+			compares3+=DummyFunction(ap.Get(i),ar.Get(i),c1.Get(i));
 		}
 	}, true);
 	tim.elapsed();
@@ -460,30 +469,35 @@ void Compare_Iteration_Pathological(uint64_t numEntities )
 
 		for (int i = 0; i < block.last; i++)
 		{
-			compares3++;
-			ap.Get(i).x = ar.Get(i).y * c1.Get(i).z;
+			
+			compares3+=DummyFunction(ap.Get(i),ar.Get(i),c1.Get(i));
 		}
 	}, true);
 
 	double Decs_parallel = tim.elapsed();
 
-	cout << "Total Iterations: " << compares << ":" << compares2 << endl;
+	cout << "Total Iterations: " << nIterationsEnTT << ":" << nIterationsDecs << endl;
+	cout << "Dummy Numbers: " << compares << ":" << compares2 << endl;
 	cout << "    Decs Parallel: " << Decs_parallel << "ms" << endl;
 	Print_Comparaision(Entt_creation, Decs_creation);
 }
 
 int main()
 {
-	for (int i = 0; i < 20; i++)
-	{
+	
 		//Compare_Creation();
 
 		//cout << "===========Comparing Decs against Entt ================" << endl << endl;
-		//Compare_CreationDeletion();
-		//Compare_ComponentAdd();
-		//Compare_ComponentRemove();
-		//Compare_SimpleIteration();
-		//Compare_SimpleIteration_5Comps();
+	for (int i = 0; i < 1; i++)
+	{
+		Compare_CreationDeletion();
+		Compare_ComponentAdd();
+		Compare_ComponentRemove();
+	}
+		Compare_SimpleIteration();
+		Compare_SimpleIteration_5Comps();
+	for (int i = 5; i < 20; i++)
+	{
 		Compare_Iteration_Pathological(i * 20000);
 	}
 
