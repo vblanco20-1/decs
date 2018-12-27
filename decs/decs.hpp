@@ -34,7 +34,14 @@ struct Metatype {
 
 		meta.name_hash = typeid(T).hash_code(); 
 		meta.name = typeid(T).name();
-		meta.size = sizeof(T);
+		if ( std::is_empty<T>::value )
+		{
+			meta.size = 0;
+		}
+		else {
+			meta.size = sizeof(T);
+		}
+	
 		meta.align = alignof(T);
 
 		meta.constructor = [](void* p) {
@@ -88,10 +95,12 @@ struct ComponentList {
 		for (auto m : metatypes)
 		{
 			long hash = hash64shift(m.name_hash);
-			cached_hash |= hash;
+			cached_hash ^= hash;
+			and_hash &= hash;
 		}
 
 	}
+	std::size_t and_hash{ 0 };
 	std::size_t cached_hash{ 0 };
 };
 
@@ -198,10 +207,14 @@ struct Archetype {
 		componentlist.sort();
 		componentlist.BuildHash();
 	}
-
+	bool MatchAndHash(const ComponentList & Components) {
+		const size_t ListHash = Components.and_hash;
+		const size_t ThisHash = componentlist.and_hash;
+		const size_t andhash = ListHash & ThisHash;
+		return andhash  == ListHash;
+	}
 	int Match(const ComponentList & Components)
 	{
-
 		int matches = 0;
 		const auto & A_Met = Components.metatypes;
 		const auto & B_Met = componentlist.metatypes;
@@ -225,23 +238,7 @@ struct Archetype {
 				}
 			}
 		}
-		//for (auto c : Components.metatypes)
-		//{
-		//	bool bFound = false;
-		//	for (auto a : componentlist.metatypes)
-		//	{
-		//		if (a.name_hash == c.name_hash)
-		//		{
-		//			bFound = true;
-		//			break;
-		//		}
-		//	}
-		//	if (bFound)
-		//	{
-		//		matches++;
-		//	}
-		//
-		//}
+		
 		return matches;
 	}
 
@@ -295,7 +292,7 @@ struct ArchetypeComponentArray {
 	void * data;
 	Metatype metatype;
 
-	ArchetypeComponentArray(Metatype type) {
+	ArchetypeComponentArray(Metatype type) {		
 		data = malloc(Archetype::ARRAY_SIZE * type.size);
 		metatype = type;
 	}
@@ -398,7 +395,11 @@ struct ArchetypeBlock {
 		for (auto &m : arch.componentlist.metatypes)
 		{
 			//ArchetypeComponentArray newArray = ;
-			componentArrays.push_back(std::move(ArchetypeComponentArray(m)));
+			if (m.size != 0)
+			{
+				componentArrays.push_back(std::move(ArchetypeComponentArray(m)));
+
+			}
 		}
 		canary = 0xDEADBEEF;
 		newets = 0;
@@ -428,16 +429,26 @@ struct ArchetypeBlock {
 	template<typename C>
 	TypedArchetypeComponentArray<C> GetComponentArray() {
 		Metatype mc = Metatype::BuildMetatype<C>();
-
-		for (auto &c : componentArrays)
+		//myArch
+		int i = 0;
+		for (Metatype & cl : myArch.componentlist.metatypes)
 		{
-			if (c.metatype.name_hash == mc.name_hash)
+			if (cl.size != 0)
 			{
-				TypedArchetypeComponentArray<C> tarray = TypedArchetypeComponentArray<C>(c);
+				if (cl.name_hash == mc.name_hash)
+				{
+					TypedArchetypeComponentArray<C> tarray = TypedArchetypeComponentArray<C>(componentArrays[i]);
 
-				return tarray;
+					return tarray;
+				}
+				else
+				{
+					i++;
+				}
 			}
 		}
+
+		
 
 		return TypedArchetypeComponentArray<C>();
 	}
@@ -606,6 +617,7 @@ struct ArchetypeBlockStorage {
 
 		for (auto it = block_colony.begin(); it != block_colony.end(); ++it)
 		{
+			it->refresh(0);
 			if (it->last != 0)
 			{
 				f((*it));
@@ -694,7 +706,7 @@ struct ECSWorld {
 		bIsIterating = true;
 		for (ArchetypeBlockStorage & b : BlockStorage)
 		{
-			if (b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
+			if (b.myArch.MatchAndHash(AllOfList) && b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
 			{
 				if (b.myArch.Match(NoneOfList) == 0)
 				{
@@ -737,17 +749,18 @@ struct ECSWorld {
 	void IterateBlocks(const ComponentList &AllOfList, F && f, bool bParallel = false) {
 		iterationIdx++;
 		//bParallel = false;
-		IterationBlocks.resize(0);
+		//IterationBlocks.resize(0);
+		//IterationBlocks.reserve(1000);
 		bIsIterating = true;
 		for (ArchetypeBlockStorage & b : BlockStorage)
 		{
-			if (b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
+			if (b.myArch.MatchAndHash(AllOfList) && b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
 			{
-				b.AddBlocksToList(IterationBlocks);
-				//b.Iterate(f);
+				 //b.AddBlocksToList(IterationBlocks);
+				b.Iterate(f);
 			}
 		}
-
+		return;
 
 		if (bParallel)
 		{

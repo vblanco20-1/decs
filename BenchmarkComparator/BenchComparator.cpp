@@ -319,10 +319,10 @@ void Compare_SimpleIteration_5Comps()
 	Print_Comparaision(Entt_creation, Decs_creation);
 }
 
-void Compare_Iteration_Pathological()
+void Compare_Iteration_Pathological(uint64_t numEntities )
 {
 	ECSWorld V_ECS;
-	V_ECS.BlockStorage.reserve(10000);
+	V_ECS.BlockStorage.reserve(100000);
 	entt::registry<> Entt_ECS;
 
 
@@ -340,13 +340,15 @@ void Compare_Iteration_Pathological()
 	Cs.AddComponent<C1>();
 	Cs.AddComponent<C2>();
 	Cs.AddComponent<C3>();
+	Cs.AddComponent<comp<1>>();
+	Cs.AddComponent<comp<2>>();
 
-	std::cout << "Iterating entities: pathological random case 10 Component find 3-------------------------------" << std::endl;
+	std::cout << "Iterating entities: pathological random case 10 Component find 5: Num Entities : " << numEntities <<"  -------------------------------" << std::endl;
 
 	std::mt19937 rng(0);
 	std::uniform_int_distribution<int> uniform_dist(1, 10);
 	//create entt entities
-	for (std::uint64_t i = 0; i < 1000000L; i++) {
+	for (std::uint64_t i = 0; i < numEntities; i++) {
 		auto e1 = Entt_ECS.create();
 		auto e2 = V_ECS.CreateEntity(empty);
 
@@ -402,19 +404,24 @@ void Compare_Iteration_Pathological()
 		}
 	}
 
-	auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
-	auto view = Entt_ECS.persistent_view<C1, C2, C3>();
+	//auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
+	auto view = Entt_ECS.persistent_view<C1, C2, C3,comp<1>,comp<2>>();
 	//view.initialize();
 
 	timer tim;
 
 	int compares = 0;
-	view.each([&](auto entity, auto &c2, auto &c3, auto &c4) {
+	
+
+	
+	view.each([&](auto entity, auto &c2, auto &c3, auto &c4,auto &c5, auto &c6) {
 		compares++;
 		c2.x = c3.y * c4.z;
 	});
 	double Entt_creation = tim.elapsed();
 	int compares2 = 0;
+	for (int i = 0; i < 1; i++)
+	{
 	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
 		auto ap = block.GetComponentArray<C1>();
 		auto ar = block.GetComponentArray<C2>();
@@ -424,8 +431,10 @@ void Compare_Iteration_Pathological()
 		{
 			compares2++;
 			ap.Get(i).x = ar.Get(i).y * c1.Get(i).z;
+			ap.Get(i).y = ar.Get(i).x / 10;
 		}
 	});
+	}
 	double Decs_creation = tim.elapsed();
 
 	int compares3 = 0;
@@ -438,6 +447,7 @@ void Compare_Iteration_Pathological()
 		{
 			compares3++;
 			ap.Get(i).x = ar.Get(i).y * c1.Get(i).z;
+			ap.Get(i).y = ar.Get(i).x / 10;
 		}
 	}, true);
 	tim.elapsed();
@@ -464,18 +474,20 @@ void Compare_Iteration_Pathological()
 
 int main()
 {
-	for (int i = 0; i < 3; i++)
+	for (int i = 0; i < 20; i++)
 	{
 		//Compare_Creation();
 
 		//cout << "===========Comparing Decs against Entt ================" << endl << endl;
-		Compare_CreationDeletion();
-		Compare_ComponentAdd();
-		Compare_ComponentRemove();
-		Compare_SimpleIteration();
-		Compare_SimpleIteration_5Comps();
-		Compare_Iteration_Pathological();
+		//Compare_CreationDeletion();
+		//Compare_ComponentAdd();
+		//Compare_ComponentRemove();
+		//Compare_SimpleIteration();
+		//Compare_SimpleIteration_5Comps();
+		Compare_Iteration_Pathological(i * 20000);
 	}
+
+	
 
 	char a;
 	cin >> a;
