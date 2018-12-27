@@ -289,20 +289,26 @@ struct Archetype {
 
 
 struct ArchetypeComponentArray {
-	void * data;
+	void * data;	
 	Metatype metatype;
 
 	ArchetypeComponentArray(Metatype type) {		
 		data = malloc(Archetype::ARRAY_SIZE * type.size);
+		
 		metatype = type;
 	}
-	~ArchetypeComponentArray() {
-		if (data != nullptr)
-		{
-			free(data);
-		}
-
+	ArchetypeComponentArray(Metatype type, void* alloc) {
+		data = alloc;
+		metatype = type;
 	}
+	//ArchetypeComponentArray
+	//~ArchetypeComponentArray() {
+	//	if (data != nullptr)
+	//	{
+	//		free(data);
+	//	}
+	//
+	//}
 	//copy constructor
 	ArchetypeComponentArray(ArchetypeComponentArray& arg) // the expression "arg.member" is lvalue
 	{
@@ -353,7 +359,7 @@ struct ArchetypeComponentArray {
 
 	template<typename T>
 	T &Get(size_t index) {
-		//assert(Metatype::BuildMetatype<T>().name_hash == metatype.name_hash);
+		assert(Metatype::BuildMetatype<T>().name_hash == metatype.name_hash);
 
 		T * ptr = (T*)data;
 
@@ -387,35 +393,143 @@ struct ArchetypeBlockStorage;
 struct ArchetypeBlock;
 struct ECSWorld;
 //void ArchetypeBlockStorage::DeleteBlock(ArchetypeBlockStorage * store, ArchetypeBlock * blk);
+//16 kilobytes
+static const size_t BLOCK_MEMORY = 16384;
 struct ArchetypeBlock {
+	using byte = unsigned char ;
+
 	size_t canary;
 	Archetype myArch;
-	ArchetypeBlock(const Archetype &arch) {
+	uint16_t fullsize;
+	void* memory;
+	std::vector<ArchetypeComponentArray> componentArrays;
 
-		for (auto &m : arch.componentlist.metatypes)
+	//handle array
+	EntityHandle * entities;
+	
+	//max index that has an entity
+	int16_t last{ 0 };
+	//new entities that shouldnt be iterated yet
+	int16_t newets{ 0 };
+	uint64_t lastIteration{ 0 };	
+
+	ArchetypeBlockStorage * storage;
+	ArchetypeBlock(const Archetype &arch) {
+		myArch = arch;
+		myArch.componentlist.BuildHash();
+		
+	}
+	void InitializeBlock()
+	{
+		//size in bytes per entity
+		uint16_t entity_size = sizeof(EntityHandle);
+		for (auto &m : myArch.componentlist.metatypes)
 		{
 			//ArchetypeComponentArray newArray = ;
 			if (m.size != 0)
 			{
-				componentArrays.push_back(std::move(ArchetypeComponentArray(m)));
+				entity_size += m.size;
+				//componentArrays.push_back(std::move(ArchetypeComponentArray(m)));
 
 			}
 		}
+		memory = malloc(BLOCK_MEMORY);
+		fullsize = (BLOCK_MEMORY / entity_size) - 2;
+		byte* alloc = (byte*)memory;
+		entities = new(alloc) EntityHandle[fullsize];
+		//advance stack allocate
+		alloc += sizeof(EntityHandle) * (fullsize + 1);
+
+		for (auto &m : myArch.componentlist.metatypes)
+		{
+			//ArchetypeComponentArray newArray = ;
+			if (m.size != 0)
+			{
+				//entity_size += m.size;
+				componentArrays.push_back(std::move(ArchetypeComponentArray(m, alloc)));
+				alloc += m.size * (fullsize + 1);
+			}
+		}
+
+
 		canary = 0xDEADBEEF;
 		newets = 0;
-		myArch = arch;
-		myArch.componentlist.BuildHash();
+		//myArch = arch;
+		//myArch.componentlist.BuildHash();
 		last = 0;
 	}
+
 	~ArchetypeBlock()
 	{
 		last = 0;
 		canary = 0;
+		if (memory != nullptr)
+		{
+			free(memory);
+		}
+		
 	}
 
+	// Simple move constructor
+	ArchetypeBlock(ArchetypeBlock&& arg) 
+	{
+		canary = arg.canary;
+		myArch = arg.myArch;
+		fullsize = arg.fullsize;
+		memory = arg.memory;
+		arg.memory = nullptr;
+		componentArrays = std::move(arg.componentArrays);
+
+		//handle array
+		entities = arg.entities;
+
+		//max index that has an entity
+		last = arg.last;
+		//new entities that shouldnt be iterated yet
+		newets= arg.newets;
+		lastIteration= arg.lastIteration;
+	}
+	// Simple copy constructor (move it)
+	ArchetypeBlock(const ArchetypeBlock& arg)
+	{
+		canary = arg.canary;
+		myArch = arg.myArch;
+		//fullsize = arg.fullsize;
+		//memory = arg.memory;
+		////arg.memory = nullptr;
+		//componentArrays = (arg.componentArrays);
+		//
+		////handle array
+		//entities = arg.entities;
+		//
+		////max index that has an entity
+		//last = arg.last;
+		////new entities that shouldnt be iterated yet
+		//newets = arg.newets;
+		//lastIteration = arg.lastIteration;
+	}
+	// Simple move assignment operator
+	ArchetypeBlock& operator=(ArchetypeBlock&& arg) {
+		canary = arg.canary;
+		myArch = arg.myArch;
+		fullsize = arg.fullsize;
+		memory = arg.memory;
+		arg.memory = nullptr;
+		componentArrays = std::move(arg.componentArrays);
+
+		//handle array
+		entities = arg.entities;
+
+		//max index that has an entity
+		last = arg.last;
+		//new entities that shouldnt be iterated yet
+		newets = arg.newets;
+		lastIteration = arg.lastIteration;
+		return *this;
+	}
 	bool checkSanity() {
 		if (canary != 0xDEADBEEF) return false;
-		for (int i = 0; i < Archetype::ARRAY_SIZE; i++)
+		for (int i = 0; i < fullsize; i++)
 		{
 			if (entities[i].generation != 1 && i < last)
 			{
@@ -456,7 +570,7 @@ struct ArchetypeBlock {
 	uint16_t AddEntity(EntityHandle handle)
 	{
 		uint16_t pos = last + newets;
-		assert(pos < myArch.ARRAY_SIZE);
+		assert(pos < fullsize);
 
 		entities[pos] = handle;		
 
@@ -520,7 +634,7 @@ struct ArchetypeBlock {
 		return entities[last - 1];
 	}
 	int GetSpace() {
-		return myArch.ARRAY_SIZE - last - newets;
+		return fullsize - last - newets;
 	}
 	void refresh(uint64_t iterationIDX) {
 		//assert(canary ==)
@@ -529,22 +643,7 @@ struct ArchetypeBlock {
 		last += newets;
 		newets = 0;
 	}
-	std::vector<ArchetypeComponentArray> componentArrays;
-
-	//handle array
-	std::array<EntityHandle, Archetype::ARRAY_SIZE> entities;
-
-	//max index that has an entity
-	int16_t last{ 0 };
-	//new entities that shouldnt be iterated yet
-	int16_t newets{ 0 };
-	uint64_t lastIteration{ 0 };
-
-	//linked list
-	//ArchetypeBlock * prev;
-	//ArchetypeBlock * next;
-
-	ArchetypeBlockStorage * storage;
+	
 };
 
 
@@ -576,10 +675,12 @@ struct ArchetypeBlockStorage {
 	}
 	ArchetypeBlock * CreateNewBlock() {
 		nblocks++;
-
-		auto b = block_colony.insert(myArch);
+		//ArchetypeBlock newblock = ArchetypeBlock(myArch);
+		
+		auto b = block_colony.insert( myArch );
 
 		ArchetypeBlock * blk = &(*b);
+		blk->InitializeBlock();
 		//blk->next = nullptr;
 		blk->storage = this;
 
@@ -654,7 +755,7 @@ struct ArchetypeBlockStorage {
 		{
 			ptr = &b;
 
-			if (ptr->GetSpace() > 0)//ptr->last < (Archetype::ARRAY_SIZE))
+			if (ptr->GetSpace() > 0)
 			{
 				freeblock = ptr;
 				return ptr;
@@ -701,7 +802,7 @@ struct ECSWorld {
 		iterationIdx++;
 		//bParallel = false;
 		IterationBlocks.resize(0);
-
+		IterationBlocks.reserve(1000);
 
 		bIsIterating = true;
 		for (ArchetypeBlockStorage & b : BlockStorage)
@@ -719,7 +820,7 @@ struct ECSWorld {
 		}
 
 		//std::for_each(IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
-		//	assert(bk->last <= Archetype::ARRAY_SIZE);
+		//	
 		//	assert(bk->canary == 0xDEADBEEF);
 		//	//f(*bk);
 		//});
@@ -727,7 +828,7 @@ struct ECSWorld {
 		{
 			std::for_each(std::execution::par, IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
 
-				assert(bk->last <= Archetype::ARRAY_SIZE);
+				assert(bk->last <= bk->fullsize);
 				assert(bk->canary == 0xDEADBEEF);
 				f(*bk);
 			});
@@ -735,7 +836,7 @@ struct ECSWorld {
 		else
 		{
 			std::for_each(IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
-				assert(bk->last <= Archetype::ARRAY_SIZE);
+				assert(bk->last <= bk->fullsize);
 				assert(bk->canary == 0xDEADBEEF);
 				f(*bk);
 			});
@@ -749,23 +850,23 @@ struct ECSWorld {
 	void IterateBlocks(const ComponentList &AllOfList, F && f, bool bParallel = false) {
 		iterationIdx++;
 		//bParallel = false;
-		//IterationBlocks.resize(0);
-		//IterationBlocks.reserve(1000);
+		IterationBlocks.resize(0);
+		IterationBlocks.reserve(1000);
 		bIsIterating = true;
 		for (ArchetypeBlockStorage & b : BlockStorage)
 		{
 			if (b.myArch.MatchAndHash(AllOfList) && b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
 			{
-				 //b.AddBlocksToList(IterationBlocks);
-				b.Iterate(f);
+				b.AddBlocksToList(IterationBlocks);
+				//b.Iterate(f);
 			}
 		}
-		return;
+		//return;
 
 		if (bParallel)
 		{
 			std::for_each(std::execution::par, IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
-				assert(bk->last <= Archetype::ARRAY_SIZE);
+				assert(bk->last <= bk->fullsize);
 				assert(bk->canary == 0xDEADBEEF);
 				f(*bk);
 			});
@@ -773,7 +874,7 @@ struct ECSWorld {
 		else
 		{
 			std::for_each(IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
-				assert(bk->last <= Archetype::ARRAY_SIZE);
+				assert(bk->last <= bk->fullsize);
 				assert(bk->canary == 0xDEADBEEF);
 				f(*bk);
 			});
@@ -1086,7 +1187,7 @@ struct ECSWorld {
 			if (perform_asserts) assert(et.block->canary == 0xDEADBEEF);
 			if (et.block->canary != 0xDEADBEEF) return false;
 		}
-		if (perform_asserts)assert(et.blockindex <= Archetype::ARRAY_SIZE);
+		if (perform_asserts)assert(et.blockindex <= et.block->fullsize);
 		if (perform_asserts)assert(et.blockindex >= 0);
 
 		//valid entity
