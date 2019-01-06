@@ -14,7 +14,7 @@ struct timer final {
 
 	double elapsed() {
 		auto now = std::chrono::system_clock::now();
-		double time = std::chrono::duration<double>(now - start).count();
+		double time = std::chrono::nanoseconds(now - start).count() / 1000000.0;
 		start = std::chrono::system_clock::now();
 		return time;
 	}
@@ -326,12 +326,70 @@ float DummyFunction(C1 & ca, C2&cb, C3 & cc)
 	cc.z = cb.x * cb.y;
 	return cc.z;
 }
-void Compare_Iteration_Pathological(uint64_t numEntities )
+
+void AddRandomComponentsToEntity(entt::registry<>::entity_type & EnttEntity ,EntityHandle & DecsEntity, ECSWorld& V_ECS,entt::registry<>&Entt_ECS,  std::mt19937 & rng,std::uniform_int_distribution<int>&uniform_dist) {
+
+	if (uniform_dist(rng) < 4)
+	{
+		Entt_ECS.assign<Position>(EnttEntity);
+		V_ECS.AddComponent<Position>(DecsEntity);
+	}
+	if (uniform_dist(rng) < 4)
+	{
+		Entt_ECS.assign<Rotation>(EnttEntity);
+		V_ECS.AddComponent<Rotation>(DecsEntity);
+	}
+	if (uniform_dist(rng) < 4)
+	{
+		Entt_ECS.assign<C1>(EnttEntity);
+		V_ECS.AddComponent<C1>(DecsEntity);
+	}
+	if (uniform_dist(rng) < 4)
+	{
+		Entt_ECS.assign<C2>(EnttEntity);
+		V_ECS.AddComponent<C2>(DecsEntity);
+	}
+	if (uniform_dist(rng) < 4)
+	{
+		Entt_ECS.assign<C3>(EnttEntity);
+		V_ECS.AddComponent<C3>(DecsEntity);
+	}
+	if (uniform_dist(rng) < 4)
+	{
+		Entt_ECS.assign<comp<1>>(EnttEntity);
+		V_ECS.AddComponent<comp<1>>(DecsEntity);
+	}
+	if (uniform_dist(rng) < 4)
+	{
+		Entt_ECS.assign<comp<2>>(EnttEntity);
+		V_ECS.AddComponent<comp<2>>(DecsEntity);
+	}
+	if (uniform_dist(rng) < 4)
+	{
+		Entt_ECS.assign<comp<3>>(EnttEntity);
+		V_ECS.AddComponent<comp<3>>(DecsEntity);
+	}
+	if (uniform_dist(rng) < 4)
+	{
+		Entt_ECS.assign<comp<4>>(EnttEntity);
+		V_ECS.AddComponent<comp<4>>(DecsEntity);
+	}
+	if (uniform_dist(rng) < 4)
+	{
+		Entt_ECS.assign<comp<5>>(EnttEntity);
+		V_ECS.AddComponent<comp<5>>(DecsEntity);
+	}
+}
+
+#define MATCH_5 1
+
+void Compare_Iteration_Pathological(uint64_t numEntities, bool bShuffle = false )
 {
 	ECSWorld V_ECS;
 	V_ECS.BlockStorage.reserve(100000);
 	entt::registry<> Entt_ECS;
 
+	int MatchNumber = 3;
 
 	Archetype All;
 	All.AddComponent<Position>();
@@ -347,72 +405,61 @@ void Compare_Iteration_Pathological(uint64_t numEntities )
 	Cs.AddComponent<C1>();
 	Cs.AddComponent<C2>();
 	Cs.AddComponent<C3>();
-	//Cs.AddComponent<comp<1>>();
-	//Cs.AddComponent<comp<2>>();
 
-	std::cout << "Iterating entities: pathological random case 10 Component find 5: Num Entities : " << numEntities <<"  -------------------------------" << std::endl;
+#if MATCH_5
+	Cs.AddComponent<comp<1>>();
+	Cs.AddComponent<comp<2>>();
+	MatchNumber = 5;
+#endif 
+
+	std::cout << "Iterating "<< (bShuffle ? " shuffled " : " ordered ")  << "entities: pathological random case 10 Component find "<<MatchNumber <<": Num Entities : " << numEntities <<"  -------------------------------" << std::endl;
 
 	std::mt19937 rng(0);
 	std::uniform_int_distribution<int> uniform_dist(1, 10);
+
+	std::vector<entt::registry<>::entity_type > EnttEntities;
+	std::vector<EntityHandle> DecsEntities;
+
+	EnttEntities.reserve(numEntities);
+	DecsEntities.reserve(numEntities);
 	//create entt entities
 	for (std::uint64_t i = 0; i < numEntities; i++) {
 		auto e1 = Entt_ECS.create();
 		auto e2 = V_ECS.CreateEntity(empty);
+		EnttEntities.push_back(e1);
+		DecsEntities.push_back(e2);
 
-		if (uniform_dist(rng) < 4)
+
+		AddRandomComponentsToEntity(e1,e2,V_ECS,Entt_ECS,rng,uniform_dist);
+	}
+	//delete half the entities randomly
+
+	if (bShuffle)
+	{
+		for (int i = 0; i < numEntities; i++)
 		{
-			Entt_ECS.assign<Position>(e1);
-			V_ECS.AddComponent<Position>(e2);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			Entt_ECS.assign<Rotation>(e1);
-			V_ECS.AddComponent<Rotation>(e2);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			Entt_ECS.assign<C1>(e1);
-			V_ECS.AddComponent<C1>(e2);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			Entt_ECS.assign<C2>(e1);
-			V_ECS.AddComponent<C2>(e2);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			Entt_ECS.assign<C3>(e1);
-			V_ECS.AddComponent<C3>(e2);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			Entt_ECS.assign<comp<1>>(e1);
-			V_ECS.AddComponent<comp<1>>(e2);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			Entt_ECS.assign<comp<2>>(e1);
-			V_ECS.AddComponent<comp<2>>(e2);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			Entt_ECS.assign<comp<3>>(e1);
-			V_ECS.AddComponent<comp<3>>(e2);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			Entt_ECS.assign<comp<4>>(e1);
-			V_ECS.AddComponent<comp<4>>(e2);
-		}
-		if (uniform_dist(rng) < 4)
-		{
-			Entt_ECS.assign<comp<5>>(e1);
-			V_ECS.AddComponent<comp<5>>(e2);
+			if (uniform_dist(rng) < 5)
+			{
+				Entt_ECS.destroy(EnttEntities[i]);
+				V_ECS.destroy(DecsEntities[i]);
+
+				auto e1 = Entt_ECS.create();
+				auto e2 = V_ECS.CreateEntity(empty);
+				AddRandomComponentsToEntity(e1, e2, V_ECS, Entt_ECS, rng, uniform_dist);
+			}
 		}
 	}
 
+
+
+
 	//auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
-	auto view = Entt_ECS.persistent_view<C1, C2, C3/*,,comp<1>,comp<2>*/>();
+	auto view = Entt_ECS.persistent_view<C1, C2, C3
+#if MATCH_5
+		,comp<1>,comp<2>
+#endif
+	
+	>();
 	//view.initialize();
 
 	timer tim;
@@ -421,8 +468,13 @@ void Compare_Iteration_Pathological(uint64_t numEntities )
 	
 
 	int nIterationsEnTT = 0;
-	view.each([&](auto entity, auto &c2, auto &c3, auto &c4)
-	{//,auto &c5, auto &c6) {
+	view.each([&](auto entity, auto &c2, auto &c3, auto &c4
+#if MATCH_5
+		,auto &c5, auto &c6
+#endif
+		)
+														  
+	{// {
 		compares+=DummyFunction(c2,c3,c4);
 		nIterationsEnTT++;
 	});
@@ -496,6 +548,14 @@ int main()
 	}
 		Compare_SimpleIteration();
 		Compare_SimpleIteration_5Comps();
+		for (int i = 0; i < 3; i++)
+		{
+			Compare_Iteration_Pathological(1000000, false);
+		}
+		for (int i = 0; i < 3; i++)
+		{
+			Compare_Iteration_Pathological(1000000, true);
+		}
 	for (int i = 5; i < 20; i++)
 	{
 		Compare_Iteration_Pathological(i * 20000);

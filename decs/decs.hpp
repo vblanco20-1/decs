@@ -225,6 +225,20 @@ struct Archetype {
 		componentlist.sort();
 		componentlist.BuildHash();
 	}
+
+	template<typename C>
+	bool HasComponent() {
+		Metatype mt = Metatype::BuildMetatype<C>();
+
+		for (auto m : componentlist.metatypes)
+		{
+			if (m.name_hash == mt.name_hash)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
 	bool MatchAndHash(const ComponentList & Components) {
 		const size_t ListHash = Components.and_hash;
 		const size_t ThisHash = componentlist.and_hash;
@@ -900,12 +914,13 @@ struct ECSWorld {
 				ArchetypeBlockStorage & b = BlockStorage[i];
 				if (b.myArch.MatchAndHash(AllOfList) && b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
 				{
+					truematches++;
 					b.AddBlocksToList(IterationBlocks);
-						//b.Iterate(f);
+					//	b.Iterate(f);
 				}
 			}
 		}
-		//std::cout << "Iterations: " << hashes << "Matches: " << matches <<" True matches:" <<IterationBlocks.size()  << std::endl;
+		//std::cout << "Iterations: " << hashes << "Matches: " << matches <<" True matches:" <<truematches  << std::endl;
 		//return;
 
 		if (bParallel)
@@ -1060,8 +1075,9 @@ struct ECSWorld {
 		bool bReuse = CanReuseEntity();
 		size_t index = 0;
 		if (bReuse) {
-			assert(Entities[index].block == nullptr);
+			
 			index = deletedEntities.front();
+			assert(Entities[index].block == nullptr);
 			deletedEntities.pop_front();
 			newEntity.id = index;
 			newEntity.generation = Entities[index].generation + 1;
@@ -1119,6 +1135,19 @@ struct ECSWorld {
 			new(&GetComponent<C>(entity)) C{};
 		}
 	}
+	template<typename C>
+	void HasComponent(EntityHandle entity)
+	{
+		if (Valid(entity)) {
+			const EntityStorage & et = Entities[entity.id];
+			return et.block->myArch->HasComponent<C>();
+		}
+		else {
+			return false;
+		}
+	}
+
+
 	template<typename C>
 	void RemoveComponent(EntityHandle entity)		//, C&comp)
 	{
@@ -1229,6 +1258,8 @@ struct ECSWorld {
 
 	bool Valid(EntityHandle entity, bool perform_asserts = true)
 	{
+		const bool bEnableAsserts = false;
+		perform_asserts = perform_asserts && bEnableAsserts;
 
 		if (perform_asserts) assert(entity.id < Entities.size());
 		if (entity.id >= Entities.size()) return false;
@@ -1342,6 +1373,11 @@ struct ECSWorld {
 		AddComponent<Component>(entity);
 		Component & comp = GetComponent<Component>(entity);
 		return GetComponent<Component>(entity);
+	}
+
+	template<typename Component>
+	bool has(EntityHandle entity) {
+		return HasComponent<Component>(entity);
 	}
 
 	template<typename Component>
