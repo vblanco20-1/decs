@@ -326,7 +326,9 @@ struct Archetype {
 struct ArchetypeComponentArray {
 	void * data;	
 	Metatype metatype;
-		
+	ArchetypeComponentArray() {
+		data = nullptr;
+	}
 	ArchetypeComponentArray(Metatype type, void* alloc) {
 		data = alloc;
 		metatype = type;
@@ -420,7 +422,7 @@ struct ArchetypeBlock;
 struct ECSWorld;
 
 //8 kilobytes
-static const size_t BLOCK_MEMORY = 8192;
+static const size_t BLOCK_MEMORY = 16384;//8192;
 struct ArchetypeBlock {
 	using byte = unsigned char ;
 
@@ -428,7 +430,9 @@ struct ArchetypeBlock {
 	Archetype myArch;
 	uint16_t fullsize;
 	void* memory;
-	std::vector<ArchetypeComponentArray> componentArrays;
+	//std::vector<ArchetypeComponentArray> componentArrays;
+	ArchetypeComponentArray* _componentArrays;
+	uint16_t _array_count;
 
 	//handle array
 	EntityHandle * entities;
@@ -448,25 +452,39 @@ struct ArchetypeBlock {
 	{
 		//size in bytes per entity
 		uint16_t entity_size = sizeof(EntityHandle);
+		uint16_t header_size = 0;
+		int count = 0;
 		for (auto &m : myArch.componentlist.metatypes)
-		{			
+		{
+			
 			if (m.size != 0)
 			{
+				count++;
 				entity_size += m.size;
 			}
 		}
+
+		_array_count = count;
+		header_size += sizeof(ArchetypeComponentArray) * _array_count;
+
+
 		memory = malloc(BLOCK_MEMORY);
-		fullsize = (BLOCK_MEMORY / entity_size) - 2;
+		fullsize = ((BLOCK_MEMORY -header_size) / entity_size) - 2;
 		byte* alloc = (byte*)memory;
+		_componentArrays = new(alloc) ArchetypeComponentArray[_array_count];
+		alloc += header_size;
 		entities = new(alloc) EntityHandle[fullsize];
 		//advance stack allocate
 		alloc += sizeof(EntityHandle) * (fullsize + 1);
 
+		int i = 0;
 		for (auto &m : myArch.componentlist.metatypes)
 		{			
 			if (m.size != 0)
-			{				
-				componentArrays.push_back(std::move(ArchetypeComponentArray(m, alloc)));
+			{		
+				_componentArrays[i] = ArchetypeComponentArray(m, alloc);
+				i++;
+				//componentArrays.push_back(std::move(ArchetypeComponentArray(m, alloc)));
 				alloc += m.size * (fullsize + 1);
 			}
 		}
@@ -476,6 +494,7 @@ struct ArchetypeBlock {
 		newets = 0;		
 		last = 0;
 	}
+	
 
 	~ArchetypeBlock()
 	{
@@ -495,7 +514,7 @@ struct ArchetypeBlock {
 		fullsize = arg.fullsize;
 		memory = arg.memory;
 		arg.memory = nullptr;
-		componentArrays = std::move(arg.componentArrays);
+		//componentArrays = std::move(arg.componentArrays);
 
 		//handle array
 		entities = arg.entities;
@@ -532,7 +551,7 @@ struct ArchetypeBlock {
 		fullsize = arg.fullsize;
 		memory = arg.memory;
 		arg.memory = nullptr;
-		componentArrays = std::move(arg.componentArrays);
+		//componentArrays = std::move(arg.componentArrays);
 
 		//handle array
 		entities = arg.entities;
@@ -556,30 +575,23 @@ struct ArchetypeBlock {
 		}
 		return true;
 	}
+	template<typename F>
+	void foreach_array(F&&functor) {
+		for (int i = 0; i < _array_count; i++) {
+			functor(_componentArrays[i]);
+		}
+	}
 
 	template<typename C>
 	MutableComponentArray<C> get_component_array_mutable() {
 		Metatype mc = Metatype::BuildMetatype<C>();
-		//myArch
-		int i = 0;
-		for (Metatype & cl : myArch.componentlist.metatypes)
-		{
-			if (cl.size != 0)
-			{
-				if (cl.name_hash == mc.name_hash)
-				{
-					MutableComponentArray<C> tarray = MutableComponentArray<C>(componentArrays[i]);
-
-					return tarray;
-				}
-				else
-				{
-					i++;
-				}
-			}
-		}
-
 		
+		for (int i = 0; i < _array_count; i++) {
+			if (_componentArrays[i].metatype.name_hash == mc.name_hash) {
+				MutableComponentArray<C> tarray = MutableComponentArray<C>(_componentArrays[i]);
+				return tarray;
+			}
+		}		
 
 		return MutableComponentArray<C>();
 	}
@@ -596,27 +608,36 @@ struct ArchetypeBlock {
 		//entities[last].generation = 7;
 		return pos;
 	}
-
+	
 	void InitializeEntity(uint64_t entity) {
-		for (auto &clist : componentArrays)
-		{
+		foreach_array([=](auto &clist){
 			clist.create(entity);
-		}
+		});
+		//for (auto &clist : componentArrays)
+		//{
+		//	clist.create(entity);
+		//}
 	}
 	void DestroyEntity(uint64_t entity) {
-		for (auto &clist : componentArrays)
-		{
+		foreach_array([=](auto &clist) {
 			clist.destroy(entity);
-		}
+		});
+		//for (auto &clist : componentArrays)
+		//{
+		//	clist.destroy(entity);
+		//}
 	}
 
 	void DestroyAll() {
 		for (uint64_t i = 0; i < last + newets; i++)
 		{
-			for (auto &clist : componentArrays)
-			{
-				clist.destroy(i);
-			}
+			foreach_array([=](auto &clist) {
+				clist.create(i);
+			});
+			//for (auto &clist : componentArrays)
+			//{
+			//	clist.destroy(i);
+			//}
 		}
 		
 	}
@@ -624,10 +645,16 @@ struct ArchetypeBlock {
 	void CopyEntityFromBlock(uint64_t destEntity, uint64_t srcEntity, ArchetypeBlock * otherblock)
 	{
 		//copy components to the index
-		for (auto &csrc : otherblock->componentArrays)
+		for (int j = 0; j < otherblock->_array_count; j++) 
+		//for (auto &csrc : otherblock->componentArrays)
+		
 		{
-			for (auto &cthis : componentArrays)
+			auto &csrc =  otherblock->_componentArrays[j];
+
+			for (int i = 0; i < _array_count; i++) 
+			//for (auto &cthis : componentArrays)
 			{
+				auto &cthis = _componentArrays[i];
 				//find a component metatype match, and copy it to this block
 				if (csrc.metatype.name_hash == cthis.metatype.name_hash)
 				{
@@ -671,34 +698,24 @@ struct ArchetypeBlockStorage {
 	int nblocks;
 	ArchetypeBlockStorage(const Archetype & arch) {
 		myArch = arch;
-		//last = nullptr;
-		//first = nullptr;
+		
 		nblocks = 0;
-		//CreateNewBlock();
-		//last = first;
-		myArch.componentlist.build_hash();
+		
+		myArch.componentlist.finish();
 
 	}
 
 	~ArchetypeBlockStorage() {
-		//ArchetypeBlock * ptr = first;
-		////iterate linked list
-		//while (ptr != nullptr)
-		//{
-		//	auto d = ptr;
-		//	ptr = ptr->next;
-		//	delete d;			
-		//}
+		
 	}
 	ArchetypeBlock * create_new_block() {
 		nblocks++;
-		//ArchetypeBlock newblock = ArchetypeBlock(myArch);
-		
+				
 		auto b = block_colony.insert( myArch );
 
 		ArchetypeBlock * blk = &(*b);
 		blk->initialize_block();
-		//blk->next = nullptr;
+		
 		blk->storage = this;
 
 		assert(nblocks == block_colony.size());
@@ -715,9 +732,7 @@ struct ArchetypeBlockStorage {
 
 		bool bDeleted = false;
 		for (auto it = block_colony.begin(); it != block_colony.end(); ++it)
-		{
-			//for (auto &it : block_colony)
-			//{
+		{			
 			if (&(*it) == blk)
 			{
 				it->DestroyAll();
@@ -765,8 +780,8 @@ struct ArchetypeBlockStorage {
 		}
 
 		ArchetypeBlock * ptr = nullptr;
-		//iterate linked list
 
+		//iterate linked list
 		for (auto & b : block_colony)
 		{
 			ptr = &b;
@@ -776,9 +791,6 @@ struct ArchetypeBlockStorage {
 				freeblock = ptr;
 				return ptr;
 			}
-
-			//ptr = ptr->next;
-
 		}
 
 		freeblock = nullptr;
@@ -786,9 +798,7 @@ struct ArchetypeBlockStorage {
 		return nullptr;
 	}
 
-	ArchetypeBlock * freeblock{ nullptr };
-	//ArchetypeBlock * first{ nullptr };
-	//ArchetypeBlock * last{ nullptr };
+	ArchetypeBlock * freeblock{ nullptr };	
 
 	plf::colony<ArchetypeBlock> block_colony;
 
@@ -1229,10 +1239,13 @@ struct ECSWorld {
 		}
 
 		//copy components to the index
-		for (auto &ca : Block.componentArrays)
-		{
+		Block.foreach_array( [&](auto&ca) {
 			ca.copy(swap_entity, idx);
-		}
+		});
+		//for (auto &ca : Block.componentArrays)
+		//{
+		//	ca.copy(swap_entity, idx);
+		//}
 
 		//copy entity handle
 		Block.entities[idx] = Block.entities[swap_entity];

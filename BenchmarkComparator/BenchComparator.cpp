@@ -556,11 +556,11 @@ int main()
 	
 		for (int i = 0; i < 3; i++)
 		{
-			Compare_Iteration_Pathological(1000000, false);
+			Compare_Iteration_Pathological(j*100000, false);
 		}
 		for (int i = 0; i < 3; i++)
 		{
-			Compare_Iteration_Pathological(1000000, true);
+			Compare_Iteration_Pathological(j*100000, true);
 		}
 	}
 	//for (int i = 5; i < 20; i++)
