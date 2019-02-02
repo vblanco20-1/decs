@@ -1,10 +1,19 @@
+//#define _ITERATOR_DEBUG_LEVEL 0
+//#define _SECURE_SCL 0
+//#define _SECURE_SCL_THROWS 0
+//#define _HAS_ITERATOR_DEBUGGING 0
 #include "decs.hpp"
-#include "entt.hpp"
+
 #include <iostream>
 #include <chrono>
 #include <random>
 
 #include "ExampleComponents.h"
+//#define _ITERATOR_DEBUG_LEVEL 0
+//#define _SECURE_SCL 0
+//#define _SECURE_SCL_THROWS 0
+//#define _HAS_ITERATOR_DEBUGGING 0
+#include "entt.hpp"
 
 using namespace std;
 BaseComponent::IDCounter BaseComponent::family_counter_ = 1;
@@ -132,8 +141,8 @@ void Compare_ComponentRemove() {
 
 
 	Archetype PosRot;
-	PosRot.AddComponent<Position>();
-	PosRot.AddComponent<Rotation>();
+	PosRot.add_component<Position>();
+	PosRot.add_component<Rotation>();
 	//PosRot.AddComponent<BigComponent>();
 
 	std::cout << "Removing component to 1.000.000 entities-------------------------------" << std::endl;
@@ -176,11 +185,11 @@ void Compare_SimpleIteration()
 
 
 	Archetype PosRot;
-	PosRot.AddComponent<Position>();
-	PosRot.AddComponent<Rotation>();
+	PosRot.add_component<Position>();
+	PosRot.add_component<Rotation>();
 	Archetype empty;
 	Archetype PosOnly;
-	PosOnly.AddComponent<Position>();
+	PosOnly.add_component<Position>();
 	//PosRot.AddComponent<BigComponent>();
 
 	std::cout << "Iterating 1.000.000 entities 1 Component-------------------------------" << std::endl;
@@ -207,8 +216,8 @@ void Compare_SimpleIteration()
 
 	Entt_ECS.view<Position>().each([&](auto entity, auto& c) {
 		p++;
-		c.x = uniform_dist2(rng2);
-		c.y = p;
+		c.x = (float)uniform_dist2(rng2);
+		c.y = (float)p;
 	});
 	p = 0;
 	V_ECS.IterateBlocks(PosOnly.componentlist, empty.componentlist, [&](ArchetypeBlock & block) {
@@ -218,8 +227,8 @@ void Compare_SimpleIteration()
 		for (int i = 0; i < block.last; i++)
 		{
 			p++;
-			ap.Get(i).x = uniform_dist1(rng1);
-			ap.Get(i).y = p;
+			ap.Get(i).x = (float)uniform_dist1(rng1);
+			ap.Get(i).y =  (float)p;
 		}
 	});
 
@@ -230,8 +239,8 @@ void Compare_SimpleIteration()
 	int compares = 0;
 	Entt_ECS.view<Position>().each([&](auto entity, const auto &c) {
 
-		const int x = c.x;
-		const int y = c.y;
+		const int x = (int)c.x;
+		const int y = (int)c.y;
 		compares += x % 20 + y;
 	});
 	double Entt_creation = tim.elapsed();
@@ -244,8 +253,8 @@ void Compare_SimpleIteration()
 
 
 		{
-			const int x = ap.Get(i).x;
-			const int y = ap.Get(i).y;
+			const int x = (int)ap.Get(i).x;
+			const int y = (int)ap.Get(i).y;
 			//cout << ":" << x << ";";
 			compares2 += x % 20 + y;
 		}
@@ -265,20 +274,22 @@ void Compare_SimpleIteration_5Comps()
 
 
 	Archetype All;
-	All.AddComponent<Position>();
-	All.AddComponent<Rotation>();
-	All.AddComponent<C1>();
-	All.AddComponent<C2>();
-	All.AddComponent<C2>();
+	All.add_component<Position>();
+	All.add_component<Rotation>();
+	All.add_component<C1>();
+	All.add_component<C2>();
+	All.add_component<C2>();
 	Archetype empty;
 	Archetype PosOnly;
-	PosOnly.AddComponent<Position>();
+	PosOnly.add_component<Position>();
 	//PosRot.AddComponent<BigComponent>();
 
 	std::cout << "Iterating 1.000.000 entities 5 Component-------------------------------" << std::endl;
 
+	const auto entitycount = 100000L;
+
 	//create entt entities
-	for (std::uint64_t i = 0; i < 1000000L; i++) {
+	for (std::uint64_t i = 0; i < entitycount; i++) {
 		auto e = Entt_ECS.create();
 		Entt_ECS.assign<Position>(e);
 		Entt_ECS.assign<Rotation>(e);
@@ -288,7 +299,7 @@ void Compare_SimpleIteration_5Comps()
 		//Entt_ECS.assign<BigComponent>(e);
 	}
 
-	auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
+	auto handles = V_ECS.CreateEntityBatched(All, entitycount);
 	auto view = Entt_ECS.persistent_view<Position, Rotation, C1, C2, C3>();
 	//view.initialize();
 
@@ -297,7 +308,7 @@ void Compare_SimpleIteration_5Comps()
 	int compares = 0;
 	view.each([&](auto entity, auto &c, auto &c1, auto &c2, auto &c3, auto &c4) {
 		c.x = c1.y * c2.z;
-		compares+= c.x;
+		compares+= (int)c.x+1;
 	});
 	double Entt_creation = tim.elapsed();
 
@@ -309,8 +320,8 @@ void Compare_SimpleIteration_5Comps()
 
 		for (int i = 0; i < block.last; i++)
 		{
-			ap.Get(i).x = ar.Get(i).y * c1.Get(i).z;
-			compares2+= ap.Get(i).x;
+			ap[i].x = ar[i].y * c1[i].z;
+			compares2+= (int)ap[i].x+1;
 		}
 	});
 	double Decs_creation = tim.elapsed();
@@ -392,23 +403,23 @@ void Compare_Iteration_Pathological(uint64_t numEntities, bool bShuffle = false 
 	int MatchNumber = 3;
 
 	Archetype All;
-	All.AddComponent<Position>();
-	All.AddComponent<Rotation>();
-	All.AddComponent<C1>();
-	All.AddComponent<C2>();
-	All.AddComponent<C2>();
+	All.add_component<Position>();
+	All.add_component<Rotation>();
+	All.add_component<C1>();
+	All.add_component<C2>();
+	All.add_component<C2>();
 	Archetype empty;
 	Archetype PosOnly;
-	PosOnly.AddComponent<Position>();
+	PosOnly.add_component<Position>();
 	//PosRot.AddComponent<BigComponent>();
 	Archetype Cs;
-	Cs.AddComponent<C1>();
-	Cs.AddComponent<C2>();
-	Cs.AddComponent<C3>();
+	Cs.add_component<C1>();
+	Cs.add_component<C2>();
+	Cs.add_component<C3>();
 
 #if MATCH_5
-	Cs.AddComponent<comp<1>>();
-	Cs.AddComponent<comp<2>>();
+	Cs.add_component<comp<1>>();
+	Cs.add_component<comp<2>>();
 	MatchNumber = 5;
 #endif 
 
@@ -475,7 +486,7 @@ void Compare_Iteration_Pathological(uint64_t numEntities, bool bShuffle = false 
 		)
 														  
 	{// {
-		compares+=DummyFunction(c2,c3,c4);
+		compares+=(int)DummyFunction(c2,c3,c4);
 		nIterationsEnTT++;
 	});
 	double Entt_creation = tim.elapsed();
@@ -491,7 +502,7 @@ void Compare_Iteration_Pathological(uint64_t numEntities, bool bShuffle = false 
 		for (int i = 0; i < block.last; i++)
 		{
 			nIterationsDecs++;
-			compares2+=DummyFunction(ap.Get(i),ar.Get(i),c1.Get(i));
+			compares2+=(int)DummyFunction(ap[i],ar[i],c1[i]);
 			
 			
 		}
@@ -508,7 +519,7 @@ void Compare_Iteration_Pathological(uint64_t numEntities, bool bShuffle = false 
 		for (int i = 0; i < block.last; i++)
 		{
 			//compares3++;
-			compares3+=DummyFunction(ap.Get(i),ar.Get(i),c1.Get(i));
+			compares3+=(int)DummyFunction(ap.Get(i),ar.Get(i),c1.Get(i));
 		}
 	}, true);
 	tim.elapsed();
@@ -522,7 +533,7 @@ void Compare_Iteration_Pathological(uint64_t numEntities, bool bShuffle = false 
 		for (int i = 0; i < block.last; i++)
 		{
 			
-			compares3+=DummyFunction(ap.Get(i),ar.Get(i),c1.Get(i));
+			compares3+=(int)DummyFunction(ap.Get(i),ar.Get(i),c1.Get(i));
 		}
 	}, true);
 
@@ -540,14 +551,17 @@ int main()
 		//Compare_Creation();
 
 		//cout << "===========Comparing Decs against Entt ================" << endl << endl;
-	for (int i = 0; i < 1; i++)
-	{
+	//for (int i = 0; i < 1; i++)
+	//{
 		Compare_CreationDeletion();
-		Compare_ComponentAdd();
-		Compare_ComponentRemove();
-	}
-		Compare_SimpleIteration();
+		//Compare_ComponentAdd();
+		//Compare_ComponentRemove();
+	//}
+		//Compare_SimpleIteration();
 		Compare_SimpleIteration_5Comps();
+	for (int j = 0; j < 10; j++) {
+
+	
 		for (int i = 0; i < 3; i++)
 		{
 			Compare_Iteration_Pathological(1000000, false);
@@ -556,10 +570,11 @@ int main()
 		{
 			Compare_Iteration_Pathological(1000000, true);
 		}
-	for (int i = 5; i < 20; i++)
-	{
-		Compare_Iteration_Pathological(i * 20000);
 	}
+	//for (int i = 5; i < 20; i++)
+	//{
+	//	Compare_Iteration_Pathological(i * 20000);
+	//}
 
 	
 

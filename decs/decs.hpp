@@ -13,6 +13,7 @@
 #include <deque>
 #include <algorithm>
 #include <execution>
+#include <xmmintrin.h>
 using ComponentGUID = uint64_t;
 
 struct Metatype {
@@ -21,11 +22,11 @@ struct Metatype {
 	using DestructorFn = void(void*);
 
 	size_t name_hash{0};
-	size_t size{0};
-	size_t align{0};
 	const char * name{"none"};
 	ConstructorFn *constructor;
 	DestructorFn *destructor;
+	uint16_t size{ 0 };
+	uint16_t align{ 0 };
 
 	template<typename T>
 	constexpr static Metatype BuildMetatype() {
@@ -70,20 +71,7 @@ protected:
 
 struct ComponentList {
 	std::vector<Metatype> metatypes;
-
-	size_t hash64shift(size_t key)
-	{
-		key = (~key) + (key << 21); // key = (key << 21) - key - 1;
-		key = key ^ (key >> 24);
-		key = (key + (key << 3)) + (key << 8); // key * 265
-		key = key ^ (key >> 14);
-		key = (key + (key << 2)) + (key << 4); // key * 21
-		key = key ^ (key >> 28);
-		key = key + (key << 31);
-		return key;
-	};
-
-
+	
 	inline const uint64_t hash_64_fnv1a(const void* key, const uint64_t len) {
 
 		const char* data = (char*)key;
@@ -105,7 +93,7 @@ struct ComponentList {
 		});
 	}
 
-	void BuildHash() {
+	void build_hash() {
 		cached_hash = 0;
 		and_hash = 0;
 		for (auto m : metatypes)
@@ -113,7 +101,8 @@ struct ComponentList {
 			//size_t hash = hash64shift(m.name_hash);
 			cached_hash += m.name_hash;
 			size_t keyhash = hash_64_fnv1a(&m.name_hash,sizeof(size_t));
-			and_hash |= 0x1L << ((keyhash )% 63);
+
+			and_hash |=(uint64_t) 0x1L << (uint64_t)((keyhash )% 63L);
 
 		}
 
@@ -131,7 +120,7 @@ struct Archetype {
 			componentlist.metatypes.push_back(c);
 		}
 		componentlist.sort();
-		componentlist.BuildHash();
+		componentlist.build_hash();
 		
 		return *this;
 	}
@@ -141,7 +130,7 @@ struct Archetype {
 
 	}
 	template<typename C>
-	void SetAdd(const Archetype &rhs)
+	void set_add(const Archetype &rhs)
 	{
 		static const Metatype m(Metatype::BuildMetatype<C>());
 
@@ -164,11 +153,11 @@ struct Archetype {
 			componentlist.metatypes.push_back(Metatype::BuildMetatype<C>());
 		}
 		componentlist.sort();
-		componentlist.BuildHash();
+		componentlist.build_hash();
 		//return std::move(arc);
 	}
 	template<typename C>
-	void SetRemove(const Archetype &rhs)
+	void set_remove(const Archetype &rhs)
 	{
 		static const Metatype m(Metatype::BuildMetatype<C>());
 
@@ -182,12 +171,12 @@ struct Archetype {
 			}
 		}
 		componentlist.sort();
-		componentlist.BuildHash();
+		componentlist.build_hash();
 		//return std::move(arc);
 	}
 	//registers a new component to the archetype metatypes
 	template<typename C>
-	void AddComponent()
+	void add_component()
 	{
 		Metatype mt = Metatype::BuildMetatype<C>();
 
@@ -203,10 +192,10 @@ struct Archetype {
 		componentlist.metatypes.push_back(mt);
 
 		componentlist.sort();
-		componentlist.BuildHash();
+		componentlist.build_hash();
 	}
 	template<typename C>
-	void RemoveComponent()
+	void remove_component()
 	{
 		Metatype mt = Metatype::BuildMetatype<C>();
 
@@ -223,11 +212,11 @@ struct Archetype {
 
 		componentlist = newList;//.metatypes.push_back(mt);
 		componentlist.sort();
-		componentlist.BuildHash();
+		componentlist.build_hash();
 	}
 
 	template<typename C>
-	bool HasComponent() {
+	bool has() {
 		Metatype mt = Metatype::BuildMetatype<C>();
 
 		for (auto m : componentlist.metatypes)
@@ -239,13 +228,13 @@ struct Archetype {
 		}
 		return false;
 	}
-	bool MatchAndHash(const ComponentList & Components) {
+	bool match_and_hash(const ComponentList & Components) {
 		const size_t ListHash = Components.and_hash;
 		const size_t ThisHash = componentlist.and_hash;
 		const size_t andhash = ListHash & ThisHash;
 		return andhash  == ListHash;
 	}
-	int Match(const ComponentList & Components)
+	int match(const ComponentList & Components)
 	{
 		int matches = 0;
 		const auto & A_Met = Components.metatypes;
@@ -274,7 +263,7 @@ struct Archetype {
 		return matches;
 	}
 
-	bool ExactMatch(const ComponentList & Components) {
+	bool exact_match(const ComponentList & Components) {
 		if (Components.cached_hash != componentlist.cached_hash) {
 			return false;
 		}
@@ -323,32 +312,12 @@ struct Archetype {
 struct ArchetypeComponentArray {
 	void * data;	
 	Metatype metatype;
-
-	ArchetypeComponentArray(Metatype type) {		
-		data = malloc(Archetype::ARRAY_SIZE * type.size);
 		
-		metatype = type;
-	}
 	ArchetypeComponentArray(Metatype type, void* alloc) {
 		data = alloc;
 		metatype = type;
-	}
-	//ArchetypeComponentArray
-	//~ArchetypeComponentArray() {
-	//	if (data != nullptr)
-	//	{
-	//		free(data);
-	//	}
-	//
-	//}
-	//copy constructor
-	ArchetypeComponentArray(ArchetypeComponentArray& arg) // the expression "arg.member" is lvalue
-	{
-		Metatype type = arg.metatype;
-		data = malloc(Archetype::ARRAY_SIZE * type.size);
-		metatype = type;
+	}	
 
-	}
 	// Simple move constructor
 	ArchetypeComponentArray(ArchetypeComponentArray&& arg) // the expression "arg.member" is lvalue
 	{
@@ -364,51 +333,62 @@ struct ArchetypeComponentArray {
 		return *this;
 	}
 
-	void Copy(uint64_t src, uint64_t dst)
+	void copy(uint64_t src, uint64_t dst)
 	{
 		char *psrc = (char*)data + src * metatype.size;
 		char *pdst = (char*)data + dst * metatype.size;
 
 		memcpy(pdst, psrc, metatype.size);
 	}
-	void Create(uint64_t idx) {
+	void create(uint64_t idx) {
 		void* ptr = (char*)data + idx * metatype.size;
 		metatype.constructor(ptr);
 	}
-	void Destroy(uint64_t idx) {
+	void destroy(uint64_t idx) {
 		void* ptr = (char*)data + idx * metatype.size;
 		metatype.destructor(ptr);
 	}
 	//copy from a different array
-	void CopyFromOuter(uint64_t src, uint64_t dst, ArchetypeComponentArray * other)
+	void copy_from_outer(uint64_t src, uint64_t dst, ArchetypeComponentArray * other)
 	{
 		char *psrc = (char*)other->data + src * metatype.size;
 		char *pdst = (char*)data + dst * metatype.size;
 
 		memcpy(pdst, psrc, metatype.size);
-	}
-
-
-	template<typename T>
-	T &Get(size_t index) {
-		assert(Metatype::BuildMetatype<T>().name_hash == metatype.name_hash);
-
-		T * ptr = (T*)data;
-
-		return ptr[index];
-	}
+	}	
 };
 template<typename T>
-struct TypedArchetypeComponentArray {
-	T * data{ nullptr };
-	TypedArchetypeComponentArray() = default;
-	TypedArchetypeComponentArray(const ArchetypeComponentArray &tarray) {
+struct MutableComponentArray {
+	
+	MutableComponentArray() = default;
+	MutableComponentArray(const ArchetypeComponentArray &tarray) {
 		data = (T*)tarray.data;
 	}
 
 	T&Get(size_t index) {
 		return data[index];
 	}
+	T& operator[](size_t index) {
+		return data[index];
+	}
+private:
+	T * data{ nullptr };
+
+};
+template<typename T>
+struct ComponentArray {
+
+	ComponentArray() = default;
+	ComponentArray(const ArchetypeComponentArray &tarray) {
+		data = (T*)tarray.data;
+	}
+	
+	const T& operator[](size_t index) {
+		return data[index];
+	}
+
+private:
+	T * data{ nullptr };
 };
 struct EntityHandle {
 	size_t id;
@@ -424,9 +404,9 @@ struct EntityHandle {
 struct ArchetypeBlockStorage;
 struct ArchetypeBlock;
 struct ECSWorld;
-//void ArchetypeBlockStorage::DeleteBlock(ArchetypeBlockStorage * store, ArchetypeBlock * blk);
-//16 kilobytes
-static const size_t BLOCK_MEMORY = 16384;
+
+//8 kilobytes
+static const size_t BLOCK_MEMORY = 8192;
 struct ArchetypeBlock {
 	using byte = unsigned char ;
 
@@ -448,7 +428,7 @@ struct ArchetypeBlock {
 	ArchetypeBlockStorage * storage;
 	ArchetypeBlock(const Archetype &arch) {
 		myArch = arch;
-		myArch.componentlist.BuildHash();
+		myArch.componentlist.build_hash();
 		
 	}
 	void InitializeBlock()
@@ -573,7 +553,7 @@ struct ArchetypeBlock {
 	}
 
 	template<typename C>
-	TypedArchetypeComponentArray<C> GetComponentArray() {
+	MutableComponentArray<C> GetComponentArray() {
 		Metatype mc = Metatype::BuildMetatype<C>();
 		//myArch
 		int i = 0;
@@ -583,7 +563,7 @@ struct ArchetypeBlock {
 			{
 				if (cl.name_hash == mc.name_hash)
 				{
-					TypedArchetypeComponentArray<C> tarray = TypedArchetypeComponentArray<C>(componentArrays[i]);
+					MutableComponentArray<C> tarray = MutableComponentArray<C>(componentArrays[i]);
 
 					return tarray;
 				}
@@ -596,7 +576,7 @@ struct ArchetypeBlock {
 
 		
 
-		return TypedArchetypeComponentArray<C>();
+		return MutableComponentArray<C>();
 	}
 
 	uint16_t AddEntity(EntityHandle handle)
@@ -615,13 +595,13 @@ struct ArchetypeBlock {
 	void InitializeEntity(uint64_t entity) {
 		for (auto &clist : componentArrays)
 		{
-			clist.Create(entity);
+			clist.create(entity);
 		}
 	}
 	void DestroyEntity(uint64_t entity) {
 		for (auto &clist : componentArrays)
 		{
-			clist.Destroy(entity);
+			clist.destroy(entity);
 		}
 	}
 
@@ -630,7 +610,7 @@ struct ArchetypeBlock {
 		{
 			for (auto &clist : componentArrays)
 			{
-				clist.Destroy(i);
+				clist.destroy(i);
 			}
 		}
 		
@@ -646,7 +626,7 @@ struct ArchetypeBlock {
 				//find a component metatype match, and copy it to this block
 				if (csrc.metatype.name_hash == cthis.metatype.name_hash)
 				{
-					cthis.CopyFromOuter(srcEntity, destEntity, &csrc);
+					cthis.copy_from_outer(srcEntity, destEntity, &csrc);
 					//break first for
 					break;
 				}
@@ -691,7 +671,7 @@ struct ArchetypeBlockStorage {
 		nblocks = 0;
 		//CreateNewBlock();
 		//last = first;
-		myArch.componentlist.BuildHash();
+		myArch.componentlist.build_hash();
 
 	}
 
@@ -851,9 +831,9 @@ struct ECSWorld {
 			if (MatchAndHash(BlockANDHashes[i], AllOfList.and_hash))
 			{
 				ArchetypeBlockStorage & b = BlockStorage[i];
-					if (b.myArch.MatchAndHash(AllOfList) && b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
+					if (b.myArch.match_and_hash(AllOfList) && b.myArch.match(AllOfList) == AllOfList.metatypes.size())
 					{
-						if (b.myArch.Match(NoneOfList) == 0)
+						if (b.myArch.match(NoneOfList) == 0)
 						{
 
 							b.AddBlocksToList(IterationBlocks);
@@ -883,11 +863,11 @@ struct ECSWorld {
 		}
 		else
 		{
-			std::for_each(IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
-				assert(bk->last <= bk->fullsize);
-				assert(bk->canary == 0xDEADBEEF);
-				f(*bk);
-			});
+			for (int i = 0; i < IterationBlocks.size(); i++)
+			{
+				f(*IterationBlocks[i]);
+			}
+			
 		}
 
 
@@ -912,7 +892,7 @@ struct ECSWorld {
 			{			
 				matches++;
 				ArchetypeBlockStorage & b = BlockStorage[i];
-				if (b.myArch.MatchAndHash(AllOfList) && b.myArch.Match(AllOfList) == AllOfList.metatypes.size())
+				if (b.myArch.match_and_hash(AllOfList) && b.myArch.match(AllOfList) == AllOfList.metatypes.size())
 				{
 					truematches++;
 					b.AddBlocksToList(IterationBlocks);
@@ -933,11 +913,12 @@ struct ECSWorld {
 		}
 		else
 		{
-			std::for_each(IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
-				assert(bk->last <= bk->fullsize);
-				assert(bk->canary == 0xDEADBEEF);
-				f(*bk);
-			});
+			for (int i = 0; i < IterationBlocks.size(); i++)
+			{				
+				f(*IterationBlocks[i]);
+			}
+			
+			
 		}
 
 
@@ -968,22 +949,26 @@ struct ECSWorld {
 		const size_t numComponents = arc.componentlist.metatypes.size();
 		
 		const size_t blocksize = BlockStorage.size();
+		const size_t cached_hash = arc.componentlist.cached_hash;
 		//for (ArchetypeBlockStorage & b : BlockStorage)
 		for (size_t i = 0; i < blocksize; i++)
 		{			
 			//block needs to have the same amount of components, and match all of them
-			if(BlockHashes[i] == arc.componentlist.cached_hash)
+			if(BlockHashes[i] != cached_hash)
+			{
+				continue;
+			}
+			else
 			{
 				ArchetypeBlockStorage * b = &BlockStorage[i];
-				if (b->myArch.ExactMatch(arc.componentlist))
+			//if (b->myArch.ExactMatch(arc.componentlist))
+			
+				entityBlock = b->FindFreeBlock();
+				if (entityBlock == nullptr)
 				{
-					entityBlock = b->FindFreeBlock();
-					if (entityBlock == nullptr)
-					{
-						entityBlock = b->CreateNewBlock();
-						break;
+					entityBlock = b->CreateNewBlock();
+					break;
 
-					}
 				}
 			}
 		}
@@ -1004,14 +989,14 @@ struct ECSWorld {
 
 	std::vector<EntityHandle> CreateEntityBatched(Archetype & arc, size_t amount)
 	{
-		arc.componentlist.BuildHash();
+		arc.componentlist.build_hash();
 		//Entities.reserve(Entities.size() + amount);
 		std::vector<EntityHandle> Handles;
 		Handles.reserve(amount);
 		size_t amount_left = amount;
 		bool bCanReuseEntities = CanReuseEntity();
-		int reuses = deletedEntities.size();
-		int newcreations = amount - reuses;
+		int reuses = (int)deletedEntities.size();
+		int newcreations = (int)amount - reuses;
 		if (newcreations > 0)
 		{
 			//Entities.reserve(Entities.size() + newcreations);
@@ -1069,7 +1054,7 @@ struct ECSWorld {
 		return Handles;
 	}
 	EntityHandle CreateEntity(Archetype & arc) {
-		arc.componentlist.BuildHash();
+		arc.componentlist.build_hash();
 		EntityHandle newEntity;
 
 		bool bReuse = CanReuseEntity();
@@ -1126,7 +1111,7 @@ struct ECSWorld {
 
 			static Archetype cached;
 
-			cached.SetAdd<C>(et.block->myArch);
+			cached.set_add<C>(et.block->myArch);
 
 			//static Archetype newarch = et.block->myArch;
 			//newarch.AddComponent<C>();
@@ -1140,7 +1125,7 @@ struct ECSWorld {
 	{
 		if (Valid(entity)) {
 			const EntityStorage & et = Entities[entity.id];
-			return et.block->myArch->HasComponent<C>();
+			return et.block->myArch->has<C>();
 		}
 		else {
 			return false;
@@ -1156,7 +1141,7 @@ struct ECSWorld {
 		if (Valid(entity)) {
 
 			static Archetype cached;
-			cached.SetRemove<C>(et.block->myArch);
+			cached.set_remove<C>(et.block->myArch);
 
 			//Archetype newarch = Archetype::CreateRemove<C>(et.block->myArch);// et.block->myArch;
 			//newarch.RemoveComponent<C>();
@@ -1196,7 +1181,7 @@ struct ECSWorld {
 	}
 
 	//returns true if the block got deleted
-	bool RemoveAndSwapFromBlock(uint64_t idx, ArchetypeBlock & Block, EntityHandle & SwappedEntity) {
+	bool RemoveAndSwapFromBlock(uint16_t idx, ArchetypeBlock & Block, EntityHandle & SwappedEntity) {
 		assert(Block.entities[idx].generation != -1);
 		assert(idx < Block.last + Block.newets);
 		//shrink
@@ -1242,7 +1227,7 @@ struct ECSWorld {
 		//copy components to the index
 		for (auto &ca : Block.componentArrays)
 		{
-			ca.Copy(swap_entity, idx);
+			ca.copy(swap_entity, idx);
 		}
 
 		//copy entity handle
@@ -1284,7 +1269,7 @@ struct ECSWorld {
 		assert(Valid(entity));
 
 		ArchetypeBlock * oldBlock = et.block;
-		if (oldBlock->myArch.ExactMatch(arc.componentlist))
+		if (oldBlock->myArch.exact_match(arc.componentlist))
 		{
 			return;
 		}

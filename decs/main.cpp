@@ -51,9 +51,9 @@ int main()
 
 
 		Archetype PosRot;
-		PosRot.AddComponent<Position>();
-		PosRot.AddComponent<Rotation>();
-		PosRot.AddComponent<BigComponent>();
+		PosRot.add_component<Position>();
+		PosRot.add_component<Rotation>();
+		PosRot.add_component<BigComponent>();
 
 
 		ECSWorld Blocks;
@@ -68,8 +68,8 @@ int main()
 		std::vector<Rotation> Rotations1;
 		std::vector<EntityHandle> Handles;
 		Archetype PR;
-		PR.AddComponent<Position>();
-		PR.AddComponent<Rotation>();
+		PR.add_component<Position>();
+		PR.add_component<Rotation>();
 
 		ComponentList search = PR.componentlist;
 		ComponentList empty;
