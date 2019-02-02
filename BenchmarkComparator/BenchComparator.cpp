@@ -185,12 +185,11 @@ void Compare_SimpleIteration()
 
 
 	Archetype PosRot;
-	PosRot.add_component<Position>();
-	PosRot.add_component<Rotation>();
+	PosRot.componentlist = ComponentList::build_component_list<Position,Rotation>();	
+	//PosRot.add_component<Position>();
+	//PosRot.add_component<Rotation>();
 	Archetype empty;
-	Archetype PosOnly;
-	PosOnly.add_component<Position>();
-	//PosRot.AddComponent<BigComponent>();
+	ComponentList PosOnly = ComponentList::build_component_list<Position>();	
 
 	std::cout << "Iterating 1.000.000 entities 1 Component-------------------------------" << std::endl;
 
@@ -220,9 +219,9 @@ void Compare_SimpleIteration()
 		c.y = (float)p;
 	});
 	p = 0;
-	V_ECS.IterateBlocks(PosOnly.componentlist, empty.componentlist, [&](ArchetypeBlock & block) {
+	V_ECS.IterateBlocks(PosOnly, empty.componentlist, [&](ArchetypeBlock & block) {
 
-		auto ap = block.GetComponentArray<Position>();
+		auto ap = block.get_component_array_mutable<Position>();
 
 		for (int i = 0; i < block.last; i++)
 		{
@@ -245,10 +244,10 @@ void Compare_SimpleIteration()
 	});
 	double Entt_creation = tim.elapsed();
 	int compares2 = 0;
-	V_ECS.IterateBlocks(PosOnly.componentlist, empty.componentlist, [&](ArchetypeBlock & block) {
+	V_ECS.IterateBlocks(PosOnly, empty.componentlist, [&](ArchetypeBlock & block) {
 
-		auto ap = block.GetComponentArray<Position>();
-		//auto ar = block.GetComponentArray<Rotation>();
+		auto ap = block.get_component_array_mutable<Position>();
+		//auto ar = block.get_component_array_mutable<Rotation>();
 		for (int i = 0; i < block.last; i++)
 
 
@@ -274,11 +273,8 @@ void Compare_SimpleIteration_5Comps()
 
 
 	Archetype All;
-	All.add_component<Position>();
-	All.add_component<Rotation>();
-	All.add_component<C1>();
-	All.add_component<C2>();
-	All.add_component<C2>();
+	All.componentlist = ComponentList::build_component_list<Position,Rotation,C1,C2,C3>();
+	
 	Archetype empty;
 	Archetype PosOnly;
 	PosOnly.add_component<Position>();
@@ -314,9 +310,9 @@ void Compare_SimpleIteration_5Comps()
 
 	int compares2 = 0;
 	V_ECS.IterateBlocks(All.componentlist, empty.componentlist, [&](ArchetypeBlock & block) {
-		auto ap = block.GetComponentArray<Position>();
-		auto ar = block.GetComponentArray<Rotation>();
-		auto c1 = block.GetComponentArray<C1>();
+		auto ap = block.get_component_array_mutable<Position>();
+		auto ar = block.get_component_array_mutable<Rotation>();
+		auto c1 = block.get_component_array_mutable<C1>();
 
 		for (int i = 0; i < block.last; i++)
 		{
@@ -403,11 +399,7 @@ void Compare_Iteration_Pathological(uint64_t numEntities, bool bShuffle = false 
 	int MatchNumber = 3;
 
 	Archetype All;
-	All.add_component<Position>();
-	All.add_component<Rotation>();
-	All.add_component<C1>();
-	All.add_component<C2>();
-	All.add_component<C2>();
+	All.componentlist = ComponentList::build_component_list<Position,Rotation,C1,C2,C3>();
 	Archetype empty;
 	Archetype PosOnly;
 	PosOnly.add_component<Position>();
@@ -495,9 +487,9 @@ void Compare_Iteration_Pathological(uint64_t numEntities, bool bShuffle = false 
 	for (int i = 0; i < 1; i++)
 	{
 	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
-		auto ap = block.GetComponentArray<C1>();
-		auto ar = block.GetComponentArray<C2>();
-		auto c1 = block.GetComponentArray<C3>();
+		auto ap = block.get_component_array_mutable<C1>();
+		auto ar = block.get_component_array_mutable<C2>();
+		auto c1 = block.get_component_array_mutable<C3>();
 
 		for (int i = 0; i < block.last; i++)
 		{
@@ -512,9 +504,9 @@ void Compare_Iteration_Pathological(uint64_t numEntities, bool bShuffle = false 
 
 	int compares3 = 0;
 	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
-		auto ap = block.GetComponentArray<C1>();
-		auto ar = block.GetComponentArray<C2>();
-		auto c1 = block.GetComponentArray<C3>();
+		auto ap = block.get_component_array_mutable<C1>();
+		auto ar = block.get_component_array_mutable<C2>();
+		auto c1 = block.get_component_array_mutable<C3>();
 
 		for (int i = 0; i < block.last; i++)
 		{
@@ -526,9 +518,9 @@ void Compare_Iteration_Pathological(uint64_t numEntities, bool bShuffle = false 
 	compares3 = 0;
 	V_ECS.IterateBlocks(Cs.componentlist, [&](ArchetypeBlock & block) {
 
-		auto ap = block.GetComponentArray<C1>();
-		auto ar = block.GetComponentArray<C2>();
-		auto c1 = block.GetComponentArray<C3>();
+		auto ap = block.get_component_array_mutable<C1>();
+		auto ar = block.get_component_array_mutable<C2>();
+		auto c1 = block.get_component_array_mutable<C3>();
 
 		for (int i = 0; i < block.last; i++)
 		{
@@ -557,7 +549,7 @@ int main()
 		//Compare_ComponentAdd();
 		//Compare_ComponentRemove();
 	//}
-		//Compare_SimpleIteration();
+		Compare_SimpleIteration();
 		Compare_SimpleIteration_5Comps();
 	for (int j = 0; j < 10; j++) {
 

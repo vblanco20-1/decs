@@ -172,8 +172,8 @@ int main()
 				//
 				//Rotation r = Rotations1[i];
 
-				Position p2 = block.GetComponentArray<Position>().Get(i);// = p;
-				Rotation r2 = block.GetComponentArray<Rotation>().Get(i);// = r;
+				Position p2 = block.get_component_array_mutable<Position>().Get(i);// = p;
+				Rotation r2 = block.get_component_array_mutable<Rotation>().Get(i);// = r;
 			}
 		});
 
@@ -189,8 +189,8 @@ int main()
 					//
 					//Rotation r = Rotations1[i];
 
-					Position p2 = block.GetComponentArray<Position>().Get(i);// = p;
-					Rotation r2 = block.GetComponentArray<Rotation>().Get(i);// = r;
+					Position p2 = block.get_component_array_mutable<Position>().Get(i);// = p;
+					Rotation r2 = block.get_component_array_mutable<Rotation>().Get(i);// = r;
 				}
 			});
 		}
