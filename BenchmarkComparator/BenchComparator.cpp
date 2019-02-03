@@ -190,7 +190,8 @@ void Compare_SimpleIteration()
 	//PosRot.add_component<Rotation>();
 	Archetype empty;
 	ComponentList PosOnly = ComponentList::build_component_list<Position>();	
-
+	V_ECS.get_matcher(PosRot.componentlist);
+	V_ECS.get_matcher(PosOnly);
 	std::cout << "Iterating 1.000.000 entities 1 Component-------------------------------" << std::endl;
 
 	//create entt entities
@@ -219,7 +220,7 @@ void Compare_SimpleIteration()
 		c.y = (float)p;
 	});
 	p = 0;
-	V_ECS.IterateBlocks(PosOnly, empty.componentlist, [&](ArchetypeBlock & block) {
+	V_ECS.IterateBlocks(PosOnly, [&](ArchetypeBlock & block) {
 
 		auto ap = block.get_component_array_mutable<Position>();
 
@@ -244,7 +245,7 @@ void Compare_SimpleIteration()
 	});
 	double Entt_creation = tim.elapsed();
 	int compares2 = 0;
-	V_ECS.IterateBlocks(PosOnly, empty.componentlist, [&](ArchetypeBlock & block) {
+	V_ECS.IterateBlocks(PosOnly, [&](ArchetypeBlock & block) {
 
 		auto ap = block.get_component_array_mutable<Position>();
 		//auto ar = block.get_component_array_mutable<Rotation>();
@@ -309,7 +310,7 @@ void Compare_SimpleIteration_5Comps()
 	double Entt_creation = tim.elapsed();
 
 	int compares2 = 0;
-	V_ECS.IterateBlocks(All.componentlist, empty.componentlist, [&](ArchetypeBlock & block) {
+	V_ECS.IterateBlocks(All.componentlist, [&](ArchetypeBlock & block) {
 		auto ap = block.get_component_array_mutable<Position>();
 		auto ar = block.get_component_array_mutable<Rotation>();
 		auto c1 = block.get_component_array_mutable<C1>();
@@ -455,7 +456,7 @@ void Compare_Iteration_Pathological(uint64_t numEntities, bool bShuffle = false 
 
 
 
-
+	auto mt = V_ECS.get_matcher(Cs.componentlist);
 	//auto handles = V_ECS.CreateEntityBatched(All, 1000000L);
 	auto view = Entt_ECS.persistent_view<C1, C2, C3
 #if MATCH_5
@@ -551,25 +552,19 @@ int main()
 	//}
 		Compare_SimpleIteration();
 		Compare_SimpleIteration_5Comps();
-	for (int j = 0; j < 10; j++) {
+	for (int j = 1; j < 10; j++) {
 
 	
-		for (int i = 0; i < 3; i++)
+		for (int i = 1; i < 3; i++)
 		{
 			Compare_Iteration_Pathological(j*100000, false);
 		}
-		for (int i = 0; i < 3; i++)
+		for (int i = 1; i < 3; i++)
 		{
 			Compare_Iteration_Pathological(j*100000, true);
 		}
 	}
-	//for (int i = 5; i < 20; i++)
-	//{
-	//	Compare_Iteration_Pathological(i * 20000);
-	//}
-
 	
-
 	char a;
 	cin >> a;
 }

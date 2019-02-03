@@ -68,7 +68,6 @@ protected:
 };
 
 
-
 struct ComponentList {
 	std::vector<Metatype> metatypes;
 	
@@ -97,8 +96,7 @@ struct ComponentList {
 		cached_hash = 0;
 		and_hash = 0;
 		for (auto m : metatypes)
-		{
-			//size_t hash = hash64shift(m.name_hash);
+		{			
 			cached_hash += m.name_hash;
 			size_t keyhash = hash_64_fnv1a(&m.name_hash,sizeof(size_t));
 
@@ -107,10 +105,8 @@ struct ComponentList {
 		}
 
 	}
-	
-	
 
-	template<typename ...C>//, typename... Cs>
+	template<typename ...C>
 	static ComponentList build_component_list() {
 		ComponentList list;
 		list.metatypes = {Metatype::BuildMetatype<C>()...} ;
@@ -141,8 +137,7 @@ struct Archetype {
 		{
 			componentlist.metatypes.push_back(c);
 		}
-		componentlist.sort();
-		componentlist.build_hash();
+		componentlist.finish();
 		
 		return *this;
 	}
@@ -387,6 +382,9 @@ struct MutableComponentArray {
 	T& operator[](size_t index) {
 		return data[index];
 	}
+	bool valid()const{
+		return data != nullptr;
+	}
 private:
 	T * data{ nullptr };
 
@@ -402,7 +400,9 @@ struct ComponentArray {
 	const T& operator[](size_t index) {
 		return data[index];
 	}
-
+	bool valid()const {
+		return data != nullptr;
+	}
 private:
 	T * data{ nullptr };
 };
@@ -430,7 +430,7 @@ struct ArchetypeBlock {
 	Archetype myArch;
 	uint16_t fullsize;
 	void* memory;
-	//std::vector<ArchetypeComponentArray> componentArrays;
+	
 	ArchetypeComponentArray* _componentArrays;
 	uint16_t _array_count;
 
@@ -596,7 +596,7 @@ struct ArchetypeBlock {
 		return MutableComponentArray<C>();
 	}
 
-	uint16_t AddEntity(EntityHandle handle)
+	uint16_t add_entity(EntityHandle handle)
 	{
 		uint16_t pos = last + newets;
 		assert(pos < fullsize);
@@ -609,40 +609,29 @@ struct ArchetypeBlock {
 		return pos;
 	}
 	
-	void InitializeEntity(uint64_t entity) {
+	void initialize_entity(uint64_t entity) {
 		foreach_array([=](auto &clist){
 			clist.create(entity);
 		});
-		//for (auto &clist : componentArrays)
-		//{
-		//	clist.create(entity);
-		//}
+		
 	}
-	void DestroyEntity(uint64_t entity) {
+	void destroy_entity(uint64_t entity) {
 		foreach_array([=](auto &clist) {
 			clist.destroy(entity);
-		});
-		//for (auto &clist : componentArrays)
-		//{
-		//	clist.destroy(entity);
-		//}
+		});		
 	}
 
-	void DestroyAll() {
+	void destroy_all() {
 		for (uint64_t i = 0; i < last + newets; i++)
 		{
 			foreach_array([=](auto &clist) {
 				clist.create(i);
-			});
-			//for (auto &clist : componentArrays)
-			//{
-			//	clist.destroy(i);
-			//}
+			});			
 		}
 		
 	}
 	//copy a entity from a different block into this one
-	void CopyEntityFromBlock(uint64_t destEntity, uint64_t srcEntity, ArchetypeBlock * otherblock)
+	void copy_entity_from_block(uint64_t destEntity, uint64_t srcEntity, ArchetypeBlock * otherblock)
 	{
 		//copy components to the index
 		for (int j = 0; j < otherblock->_array_count; j++) 
@@ -735,7 +724,7 @@ struct ArchetypeBlockStorage {
 		{			
 			if (&(*it) == blk)
 			{
-				it->DestroyAll();
+				it->destroy_all();
 				it->last = 0;
 				block_colony.erase(it);
 				bDeleted = true;
@@ -757,6 +746,22 @@ struct ArchetypeBlockStorage {
 			}
 		}
 	}
+	template<typename F>
+	void iterate_par(F&&f) {
+		if (block_colony.size() > 4) {
+			iterate(f);
+		}
+		else {
+			std::for_each(std::execution::par,block_colony.begin(),block_colony.end(),[&](auto& it){
+				it.refresh(0);
+				if (it.last != 0)
+				{
+					f((it));
+				}
+			});
+		}
+
+	}
 	void add_blocks(std::vector<ArchetypeBlock*>& blocks) {
 
 		for (auto it = block_colony.begin(); it != block_colony.end(); ++it)
@@ -768,7 +773,6 @@ struct ArchetypeBlockStorage {
 
 				blocks.push_back(&(*it));
 			}
-
 		}
 	}
 
@@ -819,6 +823,11 @@ struct EntityStorage {
 	uint16_t blockindex{ 0 };
 };
 
+struct Matcher {
+	std::vector<size_t> archetype_indices;
+	ComponentList required_components;
+	ComponentList forbidden_components;
+};
 
 struct ECSWorld {
 
@@ -833,110 +842,41 @@ struct ECSWorld {
 	template<typename F>
 	void IterateBlocks(const ComponentList &AllOfList, const ComponentList& NoneOfList, F && f, bool bParallel = false) {
 		iterationIdx++;
-		//bParallel = false;
-		IterationBlocks.resize(0);
-		IterationBlocks.reserve(1000);
-		
 
 		bIsIterating = true;
-		for (size_t i = 0; i < BlockStorage.size(); i++)
-		{
-		//block needs to have the same amount of components, and match all of them
-			if (MatchAndHash(BlockANDHashes[i], AllOfList.and_hash))
-			{
-				ArchetypeBlockStorage & b = BlockStorage[i];
-					if (b.myArch.match_and_hash(AllOfList) && b.myArch.match(AllOfList) == AllOfList.metatypes.size())
-					{
-						if (b.myArch.match(NoneOfList) == 0)
-						{
 
-							b.add_blocks(IterationBlocks);
-								//b.Iterate(f);
-								//f(b);
-						}
-							//b.Iterate(f);
-					}
-			}
-		}
-
-		
-
-		//std::for_each(IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
-		//	
-		//	assert(bk->canary == 0xDEADBEEF);
-		//	//f(*bk);
-		//});
-		if (bParallel)
-		{
-			std::for_each(std::execution::par, IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
-
-				assert(bk->last <= bk->fullsize);
-				assert(bk->canary == 0xDEADBEEF);
-				f(*bk);
+		Matcher& mt = get_matcher(AllOfList,NoneOfList);
+		if (!bParallel) {
+			std::for_each(mt.archetype_indices.begin(), mt.archetype_indices.end(), [&](size_t arch) {
+				BlockStorage[arch].iterate(f);
 			});
 		}
 		else
 		{
-			for (int i = 0; i < IterationBlocks.size(); i++)
-			{
-				f(*IterationBlocks[i]);
-			}
-			
+			std::for_each(std::execution::par, mt.archetype_indices.begin(), mt.archetype_indices.end(), [&](size_t arch) {
+				BlockStorage[arch].iterate_par(f);
+			});
 		}
-
-
 
 		bIsIterating = false;
 	}
 	template<typename F>
 	void IterateBlocks(const ComponentList &AllOfList, F && f, bool bParallel = false) {
 		iterationIdx++;
-		//bParallel = false;
-		IterationBlocks.resize(0);
-		IterationBlocks.reserve(1000);
+		
 		bIsIterating = true;
-		size_t hashes = 0;
-		size_t matches= 0;
-		size_t truematches= 0;
-		for (size_t i = 0; i < BlockStorage.size(); i++)
-		{
-			hashes++;
-			//block needs to have the same amount of components, and match all of them
-			if (MatchAndHash(BlockANDHashes[i], AllOfList.and_hash))
-			{			
-				matches++;
-				ArchetypeBlockStorage & b = BlockStorage[i];
-				if (b.myArch.match_and_hash(AllOfList) && b.myArch.match(AllOfList) == AllOfList.metatypes.size())
-				{
-					truematches++;
-					b.add_blocks(IterationBlocks);
-					//	b.Iterate(f);
-				}
-			}
-		}
-		//std::cout << "Iterations: " << hashes << "Matches: " << matches <<" True matches:" <<truematches  << std::endl;
-		//return;
 
-		if (bParallel)
-		{
-			std::for_each(std::execution::par, IterationBlocks.begin(), IterationBlocks.end(), [&](auto bk) {
-				assert(bk->last <= bk->fullsize);
-				assert(bk->canary == 0xDEADBEEF);
-				f(*bk);
+		Matcher& mt = get_matcher(AllOfList);
+		if (!bParallel){
+			std::for_each(mt.archetype_indices.begin(), mt.archetype_indices.end(), [&](size_t arch) {
+				BlockStorage[arch].iterate(f);
 			});
 		}
 		else
-		{
-			for (int i = 0; i < IterationBlocks.size(); i++)
-			{				
-				f(*IterationBlocks[i]);
-			}
-			
-			
+		{	std::for_each(std::execution::par, mt.archetype_indices.begin(), mt.archetype_indices.end(), [&](size_t arch) {				
+			    BlockStorage[arch].iterate_par(f);
+			});
 		}
-
-
-
 
 		bIsIterating = false;
 	}
@@ -995,6 +935,7 @@ struct ECSWorld {
 			BlockHashes.push_back(arc.componentlist.cached_hash);
 			BlockANDHashes.push_back(arc.componentlist.and_hash);
 			entityBlock = BlockStorage[BlockStorage.size() - 1].create_new_block();
+			add_archetype_to_matchers(BlockStorage.size() - 1);
 			//entityBlock = CreateBlock(arc);
 		}
 
@@ -1045,8 +986,8 @@ struct ECSWorld {
 					newEntity.generation = 1;
 				}
 
-				uint16_t pos = entityBlock->AddEntity(newEntity);
-				entityBlock->InitializeEntity(pos);
+				uint16_t pos = entityBlock->add_entity(newEntity);
+				entityBlock->initialize_entity(pos);
 
 				EntityStorage et;
 				et.block = entityBlock;
@@ -1092,8 +1033,8 @@ struct ECSWorld {
 		ArchetypeBlock * entityBlock = FindOrCreateBlockForArchetype(arc);
 
 		//insert entity handle into the block
-		uint16_t pos = entityBlock->AddEntity(newEntity);
-		entityBlock->InitializeEntity(pos);
+		uint16_t pos = entityBlock->add_entity(newEntity);
+		entityBlock->initialize_entity(pos);
 
 		EntityStorage et;
 		et.block = entityBlock;
@@ -1177,7 +1118,7 @@ struct ECSWorld {
 		auto oldpos = et.blockindex;
 		EntityHandle Swapped;
 
-		oldBlock->DestroyEntity(oldpos);
+		oldBlock->destroy_entity(oldpos);
 		if (RemoveAndSwapFromBlock(oldpos, *oldBlock, Swapped))
 		{
 			oldBlock->storage->delete_block(oldBlock);
@@ -1296,17 +1237,13 @@ struct ECSWorld {
 		ArchetypeBlock * newBlock = FindOrCreateBlockForArchetype(arc);
 
 		//create entity in the new block
-		auto pos = newBlock->AddEntity(entity);
+		auto pos = newBlock->add_entity(entity);
 		auto oldpos = et.blockindex;
 		//copy old block entity into new block entity
-		newBlock->CopyEntityFromBlock(pos, oldpos, oldBlock);
+		newBlock->copy_entity_from_block(pos, oldpos, oldBlock);
 
 		//clear old entity slot
 		EntityHandle SwapEntity;// = oldBlock->GetLastEntity();
-
-
-
-
 
 		if (RemoveAndSwapFromBlock(oldpos, *oldBlock, SwapEntity))
 		{
@@ -1343,17 +1280,68 @@ struct ECSWorld {
 
 	}
 
+	Matcher& get_matcher(const ComponentList& AdditiveList,const ComponentList& SubstractiveList) {
+	
+		Matcher* search = nullptr;
+		for (Matcher& mt : Matchers) {
+			if (mt.required_components.cached_hash == AdditiveList.cached_hash && mt.forbidden_components.cached_hash == SubstractiveList.cached_hash) {
+				search = &mt;
+			}
+		}
+		if (!search) {
+			Matcher newMatcher;
+			newMatcher.required_components = AdditiveList;
+			Matchers.push_back(newMatcher);
+			search = &Matchers.back();
+			for (size_t i = 0; i < BlockStorage.size(); i++)
+			{
+				
+				if (MatchAndHash(BlockANDHashes[i], AdditiveList.and_hash))
+				{					
+					ArchetypeBlockStorage & b = BlockStorage[i];
+					if (b.myArch.match_and_hash(AdditiveList) && b.myArch.match(AdditiveList) == AdditiveList.metatypes.size())
+					{
+						if (b.myArch.match(SubstractiveList) == 0)
+						{
+							search->archetype_indices.push_back(i);
+						}
+					}
+				}
+			}
+		}
+
+		return *search;		
+	}
+	Matcher& get_matcher(const ComponentList& AdditiveList) {
+		return get_matcher(AdditiveList,ComponentList());
+	}
+	void add_archetype_to_matchers(size_t index) {
+		for (auto & mt : Matchers) {
+			if (MatchAndHash(BlockANDHashes[index], mt.required_components.and_hash))
+			{
+				ArchetypeBlockStorage & b = BlockStorage[index];
+				if (b.myArch.match_and_hash(mt.required_components) && b.myArch.match(mt.required_components) == mt.required_components.metatypes.size())
+				{
+					if (b.myArch.match(mt.forbidden_components) == 0)
+					{
+						mt.archetype_indices.push_back(index);
+					}
+				}
+			}
+		}
+	}
+
 	std::vector<EntityStorage> Entities;
 	std::deque<size_t> deletedEntities;
 
-
+	std::vector<Matcher> Matchers;
 	std::vector<ArchetypeBlockStorage> BlockStorage;
 	std::vector<size_t> BlockHashes;
 	std::vector<size_t> BlockANDHashes;
 	bool bIsIterating{ false };
 	bool bWantsDeletes{ false };
 
-	//EnTT style  wrapper for porting
+	//EnTT style  wrapper for porting----------------------------------------------
 	EntityHandle create() {
 		Archetype empty;
 		return CreateEntity(empty);
