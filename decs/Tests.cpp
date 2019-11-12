@@ -17,7 +17,8 @@ Archetype Arc_Rotation;
 
 int main(int argc, char* argv[]) {
 	// global setup...
-
+	
+#if 0
 	//initialize some common archetypes
 	Arc_Pos_Rot.AddComponent<Position>();
 	Arc_Pos_Rot.AddComponent<Rotation>();	
@@ -953,4 +954,5 @@ TEST_CASE("Iteration: 1 full block - Queries ")
 		REQUIRE(HandleMatches == 0);
 		REQUIRE(EntitiesIterated == 0);
 	}
+#endif
 }

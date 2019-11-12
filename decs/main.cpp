@@ -1,3 +1,5 @@
+
+#if 0
 #include "decs.hpp"
 
 #include "ExampleComponents.h"
@@ -34,6 +36,7 @@ struct ScopeTimer {
 
 int main()
 {
+
 	// Get current flag  
 	//int tmpFlag = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
 	//
@@ -205,3 +208,9 @@ int main()
 }
 
 
+#else
+int main()
+{
+	return 0;
+}
+#endif
