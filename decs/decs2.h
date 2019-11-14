@@ -1,7 +1,10 @@
 #pragma once
 #include <vector>
+#include <deque>
+#include <algorithm>
 #include <typeinfo>
 #include <../../10.0.16299.0/ucrt/assert.h>
+#include <robin_hood.h>
 
 struct TestC1 {
 	float x;
@@ -12,13 +15,28 @@ struct TestC2 {
 	std::vector<TestC1> cmps;
 };
 
+
+
+inline const uint64_t hash_64_fnv1a(const void* key, const uint64_t len) {
+
+	const char* data = (char*)key;
+	uint64_t hash = 0xcbf29ce484222325;
+	uint64_t prime = 0x100000001b3;
+
+	for (int i = 0; i < len; ++i) {
+		uint8_t value = data[i];
+		hash = hash ^ value;
+		hash *= prime;
+	}
+
+	return hash;
+}
+
 namespace decs2 {
 	using byte = unsigned char;
-	static_assert ( sizeof(byte) == 1 , "size of 1 byte isnt 1 byte");
+	static_assert (sizeof(byte) == 1, "size of 1 byte isnt 1 byte");
 	static const size_t BLOCK_MEMORY_16K = 16384;
 	static const size_t BLOCK_MEMORY_8K = 8192;
-
-	struct ChunkComponentList;
 
 	struct Metatype {
 
@@ -33,6 +51,9 @@ namespace decs2 {
 		uint16_t align{ 0 };
 	};
 
+	//has stable pointers, use name_hash for it
+	static robin_hood::unordered_node_map<uint64_t,Metatype> metatype_cache;
+
 	struct EntityID {
 		uint32_t index;
 		uint32_t generation;
@@ -40,7 +61,8 @@ namespace decs2 {
 
 	struct DataChunkHeader {
 		//pointer to the signature for this block
-		ChunkComponentList * componentList;
+		struct ChunkComponentList * componentList;
+		struct Archetype* ownerArchetype;
 		struct DataChunk* prev;
 		struct DataChunk* next;
 		//max index that has an entity
@@ -54,8 +76,8 @@ namespace decs2 {
 
 	struct ChunkComponentList {
 		struct CmpPair {
-			Metatype* type;
-			int32_t chunkOffset;
+			const Metatype* type;
+			uint32_t chunkOffset;
 		};
 		int16_t chunkCapacity;
 		std::vector<CmpPair> components;
@@ -95,48 +117,92 @@ namespace decs2 {
 
 	template<typename T>
 	static const  Metatype build_metatype()  {
+		static const Metatype type = []() {
+			Metatype meta;
+			meta.name_hash = typeid(T).hash_code();
+			meta.name = typeid(T).name();
+			if (std::is_empty<T>::value)
+			{
+				meta.size = 0;
+			}
+			else {
+				meta.size = sizeof(T);
+			}
 
-		Metatype meta;
-		meta.name_hash = typeid(T).hash_code();
-		meta.name = typeid(T).name();
-		if (std::is_empty<T>::value)
-		{
-			meta.size = 0;
-		}
-		else {
-			meta.size = sizeof(T);
-		}
+			meta.align = alignof(T);
 
-		meta.align = alignof(T);
+			meta.constructor = [](void* p) {
+				new(p) T{};
+			};
+			meta.destructor = [](void* p) {
+				((T*)p)->~T();
+			};
 
-		meta.constructor = [](void* p) {
-			new(p) T{};
-		};
-		meta.destructor = [](void* p) {
-			((T*)p)->~T();
-		};
-
-		return meta;
+			return meta;
+		}();
+		return type;
 	}
 
-	inline ChunkComponentList* build_component_list(Metatype** types, size_t count) {
+	template<typename T>
+	static const Metatype* get_metatype() {
+		auto name_hash = typeid(T).hash_code();
+		
+		auto type = metatype_cache.find(name_hash);
+		if (type == metatype_cache.end()) {
+			Metatype type = build_metatype<T>();
+			metatype_cache[name_hash] = type;
+		}
+		return &metatype_cache[name_hash];
+	}
+
+
+	struct Archetype {
+		ChunkComponentList* componentList;
+		struct ECSWorld* ownerWorld;
+		size_t componentHash;
+
+		//full chunks allways on the start of the array
+		std::vector<DataChunk*> chunks;
+	};
+
+	struct EntityStorage {
+		DataChunk* chunk;
+		uint32_t generation;
+		uint16_t chunkIndex;
+	};
+
+	struct ECSWorld {
+		std::vector<EntityStorage> entities;
+		std::deque<uint32_t> deletedEntities;
+
+		std::vector<Archetype*> archetypes;
+		//unique archetype hashes
+		std::vector<size_t> archetypeHashes;
+		//bytemask hash for checking
+		std::vector<size_t> archetypeSignatures;
+
+		int live_entities{0};
+		int dead_entities{0};
+	};
+
+	inline ChunkComponentList* build_component_list(const Metatype** types, size_t count) {
 		ChunkComponentList* list = new ChunkComponentList();
 
 		int compsize = sizeof(EntityID);
 		for (size_t i = 0; i < count;i++) {
-			Metatype *type = types[i];
-			compsize += type->size;
+			
+			compsize += types[i]->size;
 		}
 
 		size_t availibleStorage = sizeof(DataChunk::storage);
 		//2 less than the real count to account for sizes and give some slack
-		int itemCount = (availibleStorage / compsize)-2;
+		size_t itemCount = (availibleStorage / compsize)-2;
 
-		int offsets = sizeof(DataChunkHeader);
+		uint32_t offsets = sizeof(DataChunkHeader);
 		offsets += sizeof(EntityID) * itemCount;
 
 		for (size_t i = 0; i < count; i++) {
-			Metatype* type = types[i];
+			const Metatype* type = types[i];
 
 			//align properly
 			size_t remainder = offsets % type->align;
@@ -167,7 +233,7 @@ namespace decs2 {
 
 			//initialize component
 			for (auto& cmp : cmpList->components) {
-				Metatype* mtype = cmp.type;
+				const Metatype* mtype = cmp.type;
 
 				void* ptr = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * index));
 
@@ -196,7 +262,7 @@ namespace decs2 {
 
 			//clear and pop last
 			for (auto& cmp : cmpList->components) {
-				Metatype* mtype = cmp.type;
+				const Metatype* mtype = cmp.type;
 
 				void* ptr = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * index));				
 		
@@ -232,10 +298,10 @@ namespace decs2 {
 	template<typename T>
 	inline ComponentArray<T> get_chunk_array(DataChunk* chunk) {
 
-		static const Metatype type = build_metatype<T>();
+		const Metatype* type = get_metatype<T>();
 
 		for (auto cmp : chunk->header.componentList->components) {
-			if (cmp.type->name_hash == type.name_hash)
+			if (cmp.type->name_hash == type->name_hash)
 			{
 				void* ptr = (void*)((byte*)chunk + cmp.chunkOffset);
 				return ComponentArray<T>(ptr, chunk);
@@ -250,4 +316,278 @@ namespace decs2 {
 		EntityID* ptr = ((EntityID*)chunk);
 		return ComponentArray<EntityID>(ptr, chunk);
 	}
+
+	inline size_t build_signature(const Metatype** types, size_t count) {
+		size_t and_hash = 0;
+		//for (auto m : types)
+		for(int i = 0; i < count;i++)
+		{			
+			size_t keyhash = hash_64_fnv1a(&types[i]->name_hash, sizeof(size_t));
+
+			and_hash |= (uint64_t)0x1L << (uint64_t)((keyhash) % 63L);
+		}
+		return and_hash;
+	}
+	inline DataChunk* create_chunk_for_archetype(Archetype* arch) {
+		DataChunk* chunk = build_chunk(arch->componentList);
+
+		chunk->header.ownerArchetype = arch;
+		arch->chunks.push_back(chunk);
+		return chunk;
+	}
+
+	inline Archetype* find_or_create_archetype(ECSWorld* world,const Metatype** types, size_t count) {
+		static const Metatype* temporalMetatypeArray[32];
+		assert(count < 32);
+
+		for (int i = 0; i < count; i++) {
+			temporalMetatypeArray[i] = types[i];
+		}
+
+		uint64_t matcher = build_signature(temporalMetatypeArray, count);
+
+		std::sort(temporalMetatypeArray, temporalMetatypeArray + count, [](const Metatype* A, const Metatype* B) {
+			return A->name_hash < B->name_hash;
+		});
+
+		
+		for (int i = 0; i < world->archetypeSignatures.size(); i++) {
+
+			//if there is a perfect match, doing a xor will have it be 0
+			uint64_t xorTest = world->archetypeSignatures[i] ^ matcher;
+
+			if (xorTest == 0) {
+				
+				auto componentList = world->archetypes[i]->componentList;
+				if (componentList->components.size() == count) {
+					for (int j = 0; j < componentList->components.size(); j++) {
+
+						if (componentList->components[j].type->name_hash != temporalMetatypeArray[j]->name_hash)
+						{
+							//mismatch, inmediately continue
+							goto cont;
+						}
+					}
+
+					//everything matched. Found. Return inmediately
+					return world->archetypes[i];
+				}				
+			}
+
+		cont:;
+		}
+
+		//not found, create a new one
+		
+		Archetype* newArch = new Archetype();
+		
+		newArch->componentList = build_component_list(temporalMetatypeArray, count);
+		//newArch->componentHash;
+		newArch->ownerWorld = world;
+		world->archetypes.push_back(newArch);
+		world->archetypeSignatures.push_back(matcher);
+
+		//we want archs to allways have 1 chunk at least, create initial
+		create_chunk_for_archetype(newArch);
+		return newArch;
+	}
+
+	
+
+	inline EntityID allocate_entity(ECSWorld* world) {
+		EntityID newID;
+		if (world->dead_entities == 0) {
+			int index = world->entities.size();
+
+			EntityStorage newStorage;
+			newStorage.chunk = nullptr;
+			newStorage.chunkIndex = 0;
+			newStorage.generation = 1;
+
+			world->entities.push_back(newStorage);
+
+			newID.generation = 1;
+			newID.index = index;
+		}
+		else {
+		int index = world->deletedEntities.front();
+		world->deletedEntities.pop_front();
+
+		world->entities[index].generation++;
+
+		newID.generation = world->entities[index].generation;
+		newID.index = index;
+		world->dead_entities--;
+		}
+
+		world->live_entities++;
+		return newID;
+	}
+	
+	inline bool is_entity_valid(ECSWorld* world, EntityID id) {
+		//index check
+		if (world->entities.size() > id.index && id.index >= 0) {
+
+			//generation check
+			if (id.generation != 0 && world->entities[id.index].generation == id.generation)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+	inline void deallocate_entity(ECSWorld* world, EntityID id) {
+		//todo add valid check
+		world->deletedEntities.push_back(id.index);
+		world->entities[id.index].generation++;
+		world->entities[id.index].chunk = nullptr;
+		world->entities[id.index].chunkIndex = 0;
+
+		world->live_entities--;
+		world->dead_entities++;
+	}
+	inline void set_entity_archetype(Archetype* arch, EntityID id) {
+		DataChunk* targetChunk = nullptr;
+		if (arch->chunks.size() == 0) {
+			targetChunk = create_chunk_for_archetype(arch);
+		}
+		else {
+			targetChunk = arch->chunks[arch->chunks.size()-1];
+			//chunk is full, create a new one
+			if (targetChunk->header.last == arch->componentList->chunkCapacity) {
+				targetChunk = create_chunk_for_archetype(arch);
+			}
+		}
+		int index = insert_entity_in_chunk(targetChunk, id);
+		arch->ownerWorld->entities[id.index].chunk = targetChunk;
+		arch->ownerWorld->entities[id.index].chunkIndex = index;
+	}
+
+	inline EntityID create_entity_with_archetype(Archetype* arch) {
+		ECSWorld* world = arch->ownerWorld;
+
+		EntityID newID = allocate_entity(world);
+
+		set_entity_archetype(arch, newID);
+
+		return newID;
+	}
+	inline Archetype* get_entity_archetype(ECSWorld* world, EntityID id)
+	{
+		assert(is_entity_valid(world, id));
+
+		return world->entities[id.index].chunk->header.ownerArchetype;
+	}
+
+	template<typename F>
+	void iterate_matching_archetypes(ECSWorld* world, const Metatype** types,int count, F&& function) {
+		const Metatype* temporalMetatypeArray[32];
+		assert(count < 32);
+
+		for (int i = 0; i < count; i++) {
+			temporalMetatypeArray[i] = types[i];
+		}
+
+		uint64_t matcher = build_signature(temporalMetatypeArray, count);
+
+		std::sort(temporalMetatypeArray, temporalMetatypeArray + count, [](const Metatype* A,const Metatype* B) {
+			return A->name_hash < B->name_hash;
+		});
+
+		for (int i = 0; i < world->archetypeSignatures.size(); i++) {
+
+			//if there is a good match, doing an and not be 0
+			uint64_t andTest = world->archetypeSignatures[i] & matcher;
+
+			if (andTest != 0) {
+
+				auto componentList = world->archetypes[i]->componentList;
+				
+				//dumb algo, optimize later
+				int matches = 0;
+				for (int mtA = 0; mtA < count; mtA++) {
+					
+					for (auto cmp : componentList->components) {
+						if (cmp.type->name_hash == temporalMetatypeArray[mtA]->name_hash) {
+							matches++;
+							break;
+						}
+					}
+				}
+				//all perfect
+				if (matches == count) {
+
+					function(world->archetypes[i]);
+				}			
+			}
+		}
+	}
+	template<typename F>
+	void iterate_matching_chunks(ECSWorld* world, const Metatype** types, int count, F&& function) {
+
+		iterate_matching_archetypes(world, types, count, [&](Archetype* arch) {
+			
+			for (auto chunk : arch->chunks) {
+				function(chunk);
+			}
+		});
+	}
+
+	template<typename C>
+	C& get_component(ECSWorld* world, EntityID id) {
+		static Metatype* temporalMetatypeArray[32];	
+		
+		EntityStorage &storage = world->entities[id.index];
+		
+		auto acrray = get_chunk_array<C>(storage.chunk);
+		return acrray[storage.chunkIndex];
+	}
+	//template<typename C>
+	//void add_component_to_entity(ECSWorld* world, EntityID id, C&& comp) {
+	//	static Metatype* temporalMetatypeArray[32];
+	//
+	//	const Metatype type = build_metatype<C>();
+	//
+	//	Archetype* oldarch =get_entity_archetype(world, id);
+	//	int idx = 0;
+	//	for (int i = 0; i < oldarch->componentList->components.size() - 1; i++) {
+	//		Metatype* typeA = oldarch->componentList->components[i].type;
+	//		Metatype* typeB = oldarch->componentList->components[i+1].type;
+	//		temporalMetatypeArray[idx] = typeA;
+	//		idx++;
+	//		if (type.name_hash > typeA->name_hash&& type.name_hash < typeB->name_hash) {
+	//			//temporalMetatypeArray[idx] = &
+	//		}
+	//	}
+	//}
+
+	template<typename CA, typename F>
+	void iterate_entities(ECSWorld* world, F&& function) {
+
+		Metatype *type = get_metatype<CA>();
+		
+		iterate_matching_chunks(world, type, 1, [&](DataChunk* chnk) {
+			auto acrray = get_chunk_array<CA>(chnk);
+			
+			auto earray = get_chunk_array<EntityID>(chnk);
+			for (int i = 0; i < chnk->header.last; i++) {
+				function(earray[i], acrray[i]);
+			}
+		});
+	}
+	template<typename CA,typename CB, typename F>
+	void iterate_entities(ECSWorld* world, F&& function) {
+
+		const Metatype* types[] = {get_metatype<CA>(),get_metatype<CB>() };
+		iterate_matching_chunks(world, types, 1, [&](DataChunk* chnk) {
+			auto acrray = get_chunk_array<CA>(chnk);
+			auto bcrray = get_chunk_array<CB>(chnk);
+
+			auto earray = get_chunk_array<EntityID>(chnk);
+			for (int i = 0; i < chnk->header.last; i++) {
+				function(earray[i], acrray[i], bcrray[i]);
+			}
+		});
+	}
 }
+
