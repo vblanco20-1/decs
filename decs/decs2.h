@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <typeinfo>
 #include <../../10.0.16299.0/ucrt/assert.h>
-#include <robin_hood.h>
+#include <K:\Programming\decs\decs\robin_hood.h>
 
 struct TestC1 {
 	float x;
@@ -336,6 +336,12 @@ namespace decs2 {
 		return chunk;
 	}
 
+	inline void sort_metatypes(const Metatype** types, size_t count) {
+		std::sort(types, types + count, [](const Metatype* A, const Metatype* B) {
+			return A->name_hash < B->name_hash;
+		});
+	}
+
 	inline Archetype* find_or_create_archetype(ECSWorld* world,const Metatype** types, size_t count) {
 		static const Metatype* temporalMetatypeArray[32];
 		assert(count < 32);
@@ -346,9 +352,7 @@ namespace decs2 {
 
 		uint64_t matcher = build_signature(temporalMetatypeArray, count);
 
-		std::sort(temporalMetatypeArray, temporalMetatypeArray + count, [](const Metatype* A, const Metatype* B) {
-			return A->name_hash < B->name_hash;
-		});
+		sort_metatypes(temporalMetatypeArray,count);
 
 		
 		for (int i = 0; i < world->archetypeSignatures.size(); i++) {
@@ -446,23 +450,79 @@ namespace decs2 {
 		world->live_entities--;
 		world->dead_entities++;
 	}
-	inline void set_entity_archetype(Archetype* arch, EntityID id) {
+	inline DataChunk* find_free_chunk(Archetype* arch) {
 		DataChunk* targetChunk = nullptr;
 		if (arch->chunks.size() == 0) {
 			targetChunk = create_chunk_for_archetype(arch);
 		}
 		else {
-			targetChunk = arch->chunks[arch->chunks.size()-1];
+			targetChunk = arch->chunks[arch->chunks.size() - 1];
 			//chunk is full, create a new one
 			if (targetChunk->header.last == arch->componentList->chunkCapacity) {
 				targetChunk = create_chunk_for_archetype(arch);
 			}
 		}
-		int index = insert_entity_in_chunk(targetChunk, id);
-		arch->ownerWorld->entities[id.index].chunk = targetChunk;
-		arch->ownerWorld->entities[id.index].chunkIndex = index;
+		return targetChunk;
 	}
 
+	inline void move_entity_to_archetype(Archetype* newarch, EntityID id);
+	inline void set_entity_archetype(Archetype* arch, EntityID id) {
+
+		//if chunk is null, we are a empty entity
+		if (arch->ownerWorld->entities[id.index].chunk == nullptr) {
+
+			DataChunk* targetChunk = find_free_chunk(arch);
+			
+			int index = insert_entity_in_chunk(targetChunk, id);
+			arch->ownerWorld->entities[id.index].chunk = targetChunk;
+			arch->ownerWorld->entities[id.index].chunkIndex = index;
+		}
+		else {
+			move_entity_to_archetype(arch, id);
+		}		
+	}
+	inline void move_entity_to_archetype(Archetype* newarch, EntityID id) {
+
+		//insert into new chunk
+		DataChunk* oldChunk = newarch->ownerWorld->entities[id.index].chunk;
+		DataChunk* newChunk = find_free_chunk(newarch);
+
+		int newindex = insert_entity_in_chunk(newChunk, id);
+		int oldindex = newarch->ownerWorld->entities[id.index].chunkIndex;
+
+		int oldNcomps = oldChunk->header.componentList->components.size();
+		int newNcomps = newChunk->header.componentList->components.size();
+
+		auto& oldClist = oldChunk->header.componentList;
+		auto& newClist = newChunk->header.componentList;
+
+		//copy all data from old chunk into new chunk
+		//bad iteration, fix later
+		for (int i = 0; i < oldNcomps; i++) {
+			const Metatype* mtCp1 = oldClist->components[i].type;
+			for (int j  = 0; j < newNcomps; j++) {
+				const Metatype* mtCp2 = newClist->components[j].type;
+				if (mtCp2->name_hash == mtCp1->name_hash) {
+
+					//pointer for old location in old chunk
+					void* ptrOld = (void*)((byte*)oldChunk + oldClist->components[i].chunkOffset + (mtCp1->size * oldindex));
+
+					//pointer for new location in new chunk
+					void* ptrNew = (void*)((byte*)newChunk + newClist->components[j].chunkOffset + (mtCp2->size * newindex));
+					
+					//memcopy component data from old to new
+					memcpy(ptrNew, ptrOld, mtCp1->size);
+				}
+			}
+		}
+
+		//delete entity from old chunk
+		erase_entity_in_chunk(oldChunk, oldindex);
+
+		//assign entity chunk data
+		newarch->ownerWorld->entities[id.index].chunk = newChunk;
+		newarch->ownerWorld->entities[id.index].chunkIndex = newindex;
+	}
 	inline EntityID create_entity_with_archetype(Archetype* arch) {
 		ECSWorld* world = arch->ownerWorld;
 
@@ -490,9 +550,7 @@ namespace decs2 {
 
 		uint64_t matcher = build_signature(temporalMetatypeArray, count);
 
-		std::sort(temporalMetatypeArray, temporalMetatypeArray + count, [](const Metatype* A,const Metatype* B) {
-			return A->name_hash < B->name_hash;
-		});
+		sort_metatypes(temporalMetatypeArray, count);
 
 		for (int i = 0; i < world->archetypeSignatures.size(); i++) {
 
@@ -535,31 +593,88 @@ namespace decs2 {
 
 	template<typename C>
 	C& get_component(ECSWorld* world, EntityID id) {
-		static Metatype* temporalMetatypeArray[32];	
-		
+				
 		EntityStorage &storage = world->entities[id.index];
 		
 		auto acrray = get_chunk_array<C>(storage.chunk);
 		return acrray[storage.chunkIndex];
 	}
-	//template<typename C>
-	//void add_component_to_entity(ECSWorld* world, EntityID id, C&& comp) {
-	//	static Metatype* temporalMetatypeArray[32];
-	//
-	//	const Metatype type = build_metatype<C>();
-	//
-	//	Archetype* oldarch =get_entity_archetype(world, id);
-	//	int idx = 0;
-	//	for (int i = 0; i < oldarch->componentList->components.size() - 1; i++) {
-	//		Metatype* typeA = oldarch->componentList->components[i].type;
-	//		Metatype* typeB = oldarch->componentList->components[i+1].type;
-	//		temporalMetatypeArray[idx] = typeA;
-	//		idx++;
-	//		if (type.name_hash > typeA->name_hash&& type.name_hash < typeB->name_hash) {
-	//			//temporalMetatypeArray[idx] = &
-	//		}
-	//	}
-	//}
+	template<typename C>
+	bool has_component(ECSWorld* world, EntityID id) {
+		EntityStorage& storage = world->entities[id.index];
+
+		auto acrray = get_chunk_array<C>(storage.chunk);
+		return acrray.chunkOwner != nullptr;
+	}
+
+	template<typename C>
+	void add_component_to_entity(ECSWorld* world, EntityID id, C&& comp) {
+		const Metatype* temporalMetatypeArray[32];
+
+		const Metatype* type = get_metatype<C>();
+
+		Archetype* oldarch = get_entity_archetype(world, id);
+		ChunkComponentList* oldlist = oldarch->componentList;
+		bool typeFound = false;
+		int lenght = oldlist->components.size();
+		for (int i = 0; i < oldlist->components.size(); i++) {
+			temporalMetatypeArray[i] = oldlist->components[i].type;
+
+			//the pointers for metatypes are allways fully stable
+			if (temporalMetatypeArray[i] == type) {
+				typeFound = true;
+			}
+		}
+
+		Archetype* newArch = oldarch;
+		if (!typeFound) {
+			temporalMetatypeArray[lenght] = type;
+			sort_metatypes(temporalMetatypeArray, lenght + 1);
+			lenght++;
+
+			newArch = find_or_create_archetype(world, temporalMetatypeArray, lenght);
+
+			set_entity_archetype(newArch, id);
+		}
+		//optimize later
+		get_component<C>(world, id) = comp;		
+	}
+
+
+	template<typename C>
+	void remove_component_from_entity(ECSWorld* world, EntityID id) {
+		const Metatype* temporalMetatypeArray[32];
+
+		const Metatype* type = get_metatype<C>();
+
+		Archetype* oldarch = get_entity_archetype(world, id);
+		ChunkComponentList* oldlist = oldarch->componentList;
+		bool typeFound = false;
+		int lenght = oldlist->components.size();
+		for (int i = 0; i < lenght; i++) {
+			temporalMetatypeArray[i] = oldlist->components[i].type;
+
+			//the pointers for metatypes are allways fully stable
+			if (temporalMetatypeArray[i] == type) {
+				typeFound = true;
+				//swap last
+				temporalMetatypeArray[i] = oldlist->components[lenght - 1].type;
+			}
+		}
+
+		Archetype* newArch = oldarch;
+		if (typeFound) {
+
+			
+			lenght--;
+			sort_metatypes(temporalMetatypeArray, lenght);			
+
+			newArch = find_or_create_archetype(world, temporalMetatypeArray, lenght);
+
+			set_entity_archetype(newArch, id);
+		}
+	}
+
 
 	template<typename CA, typename F>
 	void iterate_entities(ECSWorld* world, F&& function) {
