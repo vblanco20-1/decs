@@ -22,37 +22,25 @@ struct IConstr {
 };
 using namespace decs2;
 
- Metatype I1type = build_metatype<I1>();
+const Metatype* I1type = get_metatype<I1>();
 
- Metatype I2type = build_metatype<I2>();
+const Metatype* I2type = get_metatype<I2>();
 
- Metatype I3type = build_metatype<I3>();
+const Metatype* I3type = get_metatype<I3>();
 
- Metatype IAligntype = build_metatype<IAlign>();
+const Metatype* IAligntype = get_metatype<IAlign>();
 
-
- Metatype IContype = build_metatype<IConstr>();
+const Metatype* IContype = get_metatype<IConstr>();
 
 namespace Tests
 {
-	TEST_CLASS(Tests)
-	{
-	public:
-		
-		TEST_METHOD(TestMethod1)
-		{
-			Assert::AreEqual(1, 1);
-		}
-	};
-
-
 	TEST_CLASS(CLists)
 	{
 	public:
 		
 		TEST_METHOD(BasicChunkOperations)
 		{
-			Metatype *types[] = { &I1type,&I2type,&I3type,&IAligntype };
+			const Metatype* types[] = { I1type,I2type,I3type,IAligntype };
 
 			ChunkComponentList* list1 = build_component_list(types,1);
 			Assert::AreEqual(list1 != nullptr, true);
@@ -131,7 +119,7 @@ namespace Tests
 
 		TEST_METHOD(ChunkAddRemove)
 		{
-			Metatype* types[] = { &I1type,&I2type,&I3type,&IContype };
+			const Metatype* types[] = { I1type,I2type,I3type,IAligntype };
 
 			ChunkComponentList* list3 = build_component_list(types, 4);
 			Assert::AreEqual(list3 != nullptr, true);
@@ -149,6 +137,8 @@ namespace Tests
 			auto arrayA = get_chunk_array<IConstr>(chunk);
 			auto arrayET = get_chunk_array<EntityID>(chunk);
 
+			Assert::AreEqual(arrayA.chunkOwner != nullptr, true);
+			Assert::AreEqual(arrayET.chunkOwner != nullptr, true);
 			bool bValid1 = true;
 			for (int i = 0; i < list3->chunkCapacity; i++) {
 				if (arrayA[i].val != 42 || arrayET[i].index != i) {
@@ -178,6 +168,95 @@ namespace Tests
 			//delete last
 			EntityID del = erase_entity_in_chunk(chunk, 0);
 			Assert::AreEqual(chunk->header.last == 0 && del.generation == 0, true);
+		}
+
+		TEST_METHOD(Archetypes)
+		{
+			ECSWorld world{};
+
+			const Metatype* types[] = { I1type,I2type,I3type,IAligntype };
+
+			Archetype* arch1 = find_or_create_archetype(&world, types, 1);
+			Archetype* arch2 = find_or_create_archetype(&world, types, 2);
+			Archetype* arch3 = find_or_create_archetype(&world, types, 3);
+			Archetype* arch1b = find_or_create_archetype(&world, types, 1);
+
+			Assert::AreEqual(arch1 == arch1b, true);
+			Assert::AreEqual(arch2 != arch3, true);
+			Assert::AreEqual(arch1 != arch3, true);
+
+			Assert::AreEqual(world.archetypes.size(), (size_t)3);
+		
+			int test1 = 0;
+
+			iterate_matching_archetypes(&world, types, 1, [&](Archetype*arch) {
+				test1++;
+			});
+
+
+			Assert::AreEqual(test1 == 3, true);
+
+			int test2 = 0;
+			iterate_matching_archetypes(&world, types+2, 1, [&](Archetype* arch) {
+				test2++;
+				});
+
+
+			Assert::AreEqual(test2== 1, true);
+
+			int test3 = 0;
+			iterate_matching_archetypes(&world, types + 3, 1, [&](Archetype* arch) {
+				test3++;
+				});
+
+
+			Assert::AreEqual(test3 == 0, true);
+		}
+
+
+		TEST_METHOD(Entities)
+		{
+			ECSWorld world{};
+			
+			std::vector<EntityID> entities;
+
+			for (int i = 0; i < 1000; i++) {
+				entities.push_back(allocate_entity(&world));
+			}
+
+			Assert::AreEqual(world.entities.size() == 1000, true);
+			Assert::AreEqual(world.live_entities == 1000, true);
+			for (auto eid : entities) {
+				deallocate_entity(&world,eid);
+			}
+
+			Assert::AreEqual(world.entities.size() == 1000, true);
+			Assert::AreEqual(world.live_entities == 0, true);
+
+			for (int i = 0; i < 1000; i++) {
+				allocate_entity(&world);
+			}
+			Assert::AreEqual(world.entities.size() == 1000, true);
+			Assert::AreEqual(world.live_entities == 1000, true);
+		}
+
+		TEST_METHOD(EntityComponentAddRemove) {
+
+			ECSWorld world;
+			const Metatype* types[] = { I1type,I2type,I3type,IAligntype };
+			Archetype* arch1 = find_or_create_archetype(&world, types, 1);
+
+			auto et = create_entity_with_archetype(arch1);
+
+			Assert::AreEqual(has_component<I1>(&world,et), true);
+			Assert::AreEqual(has_component<I2>(&world, et), false);
+
+			add_component_to_entity<I2>(&world, et,I2{});
+
+			Assert::AreEqual(has_component<I2>(&world, et), true);
+
+			remove_component_from_entity<I2>(&world, et);
+			Assert::AreEqual(has_component<I2>(&world, et), false);
 		}
 	};
 }

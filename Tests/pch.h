@@ -6,7 +6,9 @@
 
 #ifndef PCH_H
 #define PCH_H
+#include <K:\Programming\decs\decs\robin_hood.h>
 #include <K:\Programming\decs\decs\decs2.h>
+
 // add headers that you want to pre-compile here
 
 #endif //PCH_H

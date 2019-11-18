@@ -172,6 +172,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\decs\decs2.h" />
+    <ClInclude Include="..\decs\robin_hood.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>

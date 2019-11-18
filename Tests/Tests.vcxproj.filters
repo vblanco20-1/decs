@@ -29,6 +29,9 @@
     <ClInclude Include="..\decs\decs2.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\decs\robin_hood.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="decsNatvis.natvis" />
