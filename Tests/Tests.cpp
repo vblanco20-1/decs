@@ -170,6 +170,16 @@ namespace Tests
 			Assert::AreEqual(chunk->header.last == 0 && del.generation == 0, true);
 		}
 
+		TEST_METHOD(QueryMatching)
+		{
+			Query test_query;
+			
+			test_query.With<I1>().With<I2, I3, IAlign>().Exclude<IConstr>();
+
+			Assert::AreEqual(test_query.require_comps.size() == 4, true);
+			Assert::AreEqual(test_query.exclude_comps.size() == 1, true);
+		}
+
 		TEST_METHOD(Archetypes)
 		{
 			ECSWorld world{};

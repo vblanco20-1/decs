@@ -1,7 +1,4 @@
-//#define _ITERATOR_DEBUG_LEVEL 0
-//#define _SECURE_SCL 0
-//#define _SECURE_SCL_THROWS 0
-//#define _HAS_ITERATOR_DEBUGGING 0
+
 #include <chrono>
 #if 0
 
@@ -635,7 +632,7 @@ TEST_CASE("basic ecs features", "[bit-tree,!benchmark]") {
 
 	int nIterations = 1000;
 	
-
+	
 	BENCHMARK_ADVANCED("std: create 1.000 sanitycheck")(Catch::Benchmark::Chronometer meter) {
 
 		std::vector<uint64_t> test;
@@ -851,40 +848,39 @@ TEST_CASE("basic ecs features", "[bit-tree,!benchmark]") {
 		});		
 	};
 
-	BENCHMARK("Decs:  pathological create 1000k"){//(Catch::Benchmark::Chronometer meter) {
-
-		ECSWorld worldt;
-		
-		//meter.measure([&]() {
-
-			
-			pathological_build(&worldt, 1000000);
-			int count = 0;;
-			iterate_entities<Comp128<2>>(&worldt, [&](EntityID id, Comp128<2>& c) {
-				count += c.a;
-				});
-
-			return worldt.archetypes.size() + count;
-		//});
-	};
+	//BENCHMARK("Decs:  pathological create 1000k"){//(Catch::Benchmark::Chronometer meter) {
+	//
+	//	ECSWorld worldt;
+	//	
+	//	//meter.measure([&]() {
+	//
+	//		
+	//		pathological_build(&worldt, 1000000);
+	//		int count = 0;;
+	//		iterate_entities<Comp128<2>>(&worldt, [&](EntityID id, Comp128<2>& c) {
+	//			count += c.a;
+	//			});
+	//
+	//		return worldt.archetypes.size() + count;
+	//	//});
+	//};
 
 	BENCHMARK_ADVANCED("Decs:  pathological iterate 1000k") (Catch::Benchmark::Chronometer meter) {
 
 		ECSWorld worldt;
 		pathological_build(&worldt, 1000000);
-		meter.measure([&](int idx) {
-
-
-			
+		meter.measure([&](int idx) {			
 			int count = 0;;
-			iterate_entities<Comp128<4>, Comp128<5>>(&worldt, [&](EntityID id, auto& c, auto& cb) {
+			//iterate_entities<Comp128<4>, Comp128<5>>(&worldt, [&](EntityID id, auto& c, auto& cb) {
+				
+			entity_foreach(&worldt, [&](EntityID id,Comp128<4>& c, Comp128<5>& cb) {
 				count += (c.a + cb.b) * idx;
-				});
-
+			});
+			
 			return worldt.archetypes.size() + count;
 			});
 	};
-
+	
 	BENCHMARK_ADVANCED("STL:  add 2 comps iterate 1000k :sanity check") (Catch::Benchmark::Chronometer meter) {
 
 		std::vector<Comp128<4>> comp4;
@@ -956,9 +952,9 @@ TEST_CASE("basic ecs features", "[bit-tree,!benchmark]") {
 			return count;			
 		});
 	};
+	
 
-
-	CHECK(accum == global_count);
+	//CHECK(accum == global_count);
 };
 
 
@@ -1064,7 +1060,7 @@ int main(int argc, char* argv[])
 	Catch::Session session; // There must be exactly one instance
 
 	
-#if 0
+#if 1
 	for (int i = 0; i < 1000; i++) {
 		ECSWorld benchworld;
 		{
@@ -1086,21 +1082,26 @@ int main(int argc, char* argv[])
 		}
 	
 		{
-			//for (int j = 0; j < 1000; j++) {
-			//
-			//	auto start = std::chrono::system_clock::now();
-			//
-			//	int count = 0;;
-			//	iterate_entities<Comp128<4>, Comp128<5>>(&benchworld,[&](EntityID id, auto& c, auto& cb) {
-			//		count += add_comps(c,cb)+j;
-			//		});
-			//
-			//	auto end = std::chrono::system_clock::now();
-			//	auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-			//
-			//	std::cout << benchworld.archetypes.size() << std::endl;
-			//	std::cout << "Decs-iter:" << (double(elapsed.count())) / 1000.f << "ms" << count << '\n';
-			//}
+			for (int j = 0; j < 10; j++) {
+			
+				auto start = std::chrono::system_clock::now();
+			
+				int count = 0;;
+				//iterate_entities<Comp128<4>, Comp128<5>>(&benchworld,[&](EntityID id, auto& c, auto& cb) {
+				//	count += add_comps(c,cb)+j;
+				//	});
+			
+				entity_foreach(&benchworld, [&](EntityID id, Comp128<4>& c, Comp128<5>& cb) {
+					count += (c.a + cb.b) * j;
+				});
+
+
+				auto end = std::chrono::system_clock::now();
+				auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+			
+				std::cout << benchworld.archetypes.size() << std::endl;
+				std::cout << "Decs-iter:" << (double(elapsed.count())) / 1000.f << "ms    " << count << '\n';
+			}
 		}
 
 		//{

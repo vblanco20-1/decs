@@ -7,7 +7,8 @@
 #include <K:\Programming\decs\decs\robin_hood.h>
 
 #include <immintrin.h>
-
+#include <tuple>
+#include <type_traits>
 
 struct TestC1 {
 	float x;
@@ -18,7 +19,7 @@ struct TestC2 {
 	std::vector<TestC1> cmps;
 };
 
-
+#pragma warning( disable : 4267 )
 
 inline const uint64_t hash_64_fnv1a(const void* key, const uint64_t len) {
 
@@ -54,6 +55,15 @@ namespace decs2 {
 		uint16_t size{ 0 };
 		uint16_t align{ 0 };
 	};
+	struct MetatypeHash {
+		size_t name_hash{ 0 };
+		size_t matcher_hash{0};
+	};
+	template<typename T>
+	static const  Metatype build_metatype();
+
+	template<typename T>
+	static const  MetatypeHash build_metatype_hash();
 
 	//has stable pointers, use name_hash for it
 	static robin_hood::unordered_node_map<uint64_t,Metatype> metatype_cache;
@@ -119,50 +129,6 @@ namespace decs2 {
 	};
 
 
-	template<typename T>
-	static const  Metatype build_metatype()  {
-		static const Metatype type = []() {
-			Metatype meta;
-			meta.name_hash = typeid(T).hash_code();
-			meta.name = typeid(T).name();
-			meta.matcher_hash |= (uint64_t)0x1L << (uint64_t)((meta.name_hash) % 63L);
-			if (std::is_empty<T>::value)
-			{
-				meta.size = 0;
-			}
-			else {
-				meta.size = sizeof(T);
-			}
-
-			meta.align = alignof(T);
-
-			meta.constructor = [](void* p) {
-				new(p) T{};
-			};
-			meta.destructor = [](void* p) {
-				((T*)p)->~T();
-			};
-
-			return meta;
-		}();
-		return type;
-	}
-
-	template<typename T>
-	static const Metatype* get_metatype() {
-		static const Metatype* mt = []() {
-			auto name_hash = typeid(T).hash_code();
-
-			auto type = metatype_cache.find(name_hash);
-			if (type == metatype_cache.end()) {
-				Metatype type = build_metatype<T>();
-				metatype_cache[name_hash] = type;
-			}
-			return &metatype_cache[name_hash];
-		}();
-		return mt;
-	}
-
 
 	struct Archetype {
 		ChunkComponentList* componentList;
@@ -205,6 +171,119 @@ namespace decs2 {
 			}
 		};
 	};
+
+	struct Query {
+		std::vector<MetatypeHash> require_comps;
+		std::vector<MetatypeHash> exclude_comps;
+		std::vector<MetatypeHash> optional_comps;
+
+		size_t require_matcher{ 0 };
+		size_t exclude_matcher{ 0 };
+		size_t optional_matcher{ 0 };
+
+		bool built{ false };
+		
+		template<typename... C>
+		Query& With() { 
+			require_comps.insert(require_comps.end(), { build_metatype_hash<C>()... });
+
+			return *this;
+		}
+		template<typename... C>
+		Query& Exclude() {
+			exclude_comps.insert(exclude_comps.end(), { build_metatype_hash<C>()... });
+
+			return *this;
+		}
+
+		Query& Build() {
+			auto compare_hash = [](const MetatypeHash& A, const MetatypeHash& B) {
+				return A.name_hash < B.matcher_hash;
+			};
+
+			auto build_matcher = [](const std::vector<MetatypeHash>& types) {
+				size_t and_hash = 0;
+
+				for (auto type : types)
+				{
+					and_hash |= type.matcher_hash;
+				}
+				return and_hash;
+			};
+
+			auto remove_eid = [](const MetatypeHash& type) {
+				return (type.name_hash == build_metatype_hash<EntityID>().name_hash);
+			};
+			require_comps.erase(std::remove_if(require_comps.begin(), require_comps.end(), remove_eid), require_comps.end());
+			exclude_comps.erase(std::remove_if(exclude_comps.begin(), exclude_comps.end(), remove_eid), exclude_comps.end());
+			optional_comps.erase(std::remove_if(optional_comps.begin(), optional_comps.end(), remove_eid), optional_comps.end());
+
+			std::sort(require_comps.begin(), require_comps.end(), compare_hash);
+			std::sort(exclude_comps.begin(), exclude_comps.end(), compare_hash);
+			std::sort(optional_comps.begin(), optional_comps.end(), compare_hash);
+
+			require_matcher = build_matcher(require_comps);
+			exclude_matcher = build_matcher(exclude_comps);
+			optional_matcher = build_matcher(optional_comps);
+			built = true;
+			return *this;
+		}
+	};
+
+
+	template<typename T>
+	static const  Metatype build_metatype()  {
+		static const Metatype type = []() {
+			Metatype meta;
+			meta.name_hash = typeid(T).hash_code();
+			meta.name = typeid(T).name();
+			meta.matcher_hash |= (uint64_t)0x1L << (uint64_t)((meta.name_hash) % 63L);
+			if (std::is_empty<T>::value)
+			{
+				meta.size = 0;
+			}
+			else {
+				meta.size = sizeof(T);
+			}
+
+			meta.align = alignof(T);
+
+			meta.constructor = [](void* p) {
+				new(p) T{};
+			};
+			meta.destructor = [](void* p) {
+				((T*)p)->~T();
+			};
+
+			return meta;
+		}();
+		return type;
+	}
+
+	template<typename T>
+	static const  MetatypeHash build_metatype_hash() {
+		MetatypeHash hash;
+
+		hash.name_hash = typeid(T).hash_code();
+		hash.matcher_hash |= (uint64_t)0x1L << (uint64_t)((hash.name_hash) % 63L);
+		return hash;
+	}
+
+	template<typename T>
+	static const Metatype* get_metatype() {
+		static const Metatype* mt = []() {
+			auto name_hash = typeid(T).hash_code();
+
+			auto type = metatype_cache.find(name_hash);
+			if (type == metatype_cache.end()) {
+				Metatype type = build_metatype<T>();
+				metatype_cache[name_hash] = type;
+			}
+			return &metatype_cache[name_hash];
+		}();
+		return mt;
+	}
+
 
 	//reorder archetype with the fullness
 	inline void set_chunk_full(DataChunk* chunk) {
@@ -363,25 +442,28 @@ namespace decs2 {
 
 	
 	template<typename T>
-	inline ComponentArray<T> get_chunk_array(DataChunk* chunk) {
+	inline auto get_chunk_array(DataChunk* chunk) {
 
-		const Metatype* type = get_metatype<T>();
+		using ActualT = ::std::remove_reference_t<T>;
 
-		for (auto cmp : chunk->header.componentList->components) {
-			if (cmp.type->name_hash == type->name_hash)
-			{
-				void* ptr = (void*)((byte*)chunk + cmp.chunkOffset);
-				return ComponentArray<T>(ptr, chunk);
-			}
+		if constexpr (std::is_same<ActualT, EntityID>::value)
+		{
+			EntityID* ptr = ((EntityID*)chunk);
+			return ComponentArray<EntityID>(ptr, chunk);
 		}
+		else {
+			const Metatype* type = get_metatype<ActualT>();
 
-		return ComponentArray<T>();
-	}
+			for (auto cmp : chunk->header.componentList->components) {
+				if (cmp.type->name_hash == type->name_hash)
+				{
+					void* ptr = (void*)((byte*)chunk + cmp.chunkOffset);
+					return ComponentArray<ActualT>(ptr, chunk);
+				}
+			}
 
-	template<>
-	inline ComponentArray<EntityID> get_chunk_array(DataChunk* chunk) {
-		EntityID* ptr = ((EntityID*)chunk);
-		return ComponentArray<EntityID>(ptr, chunk);
+			return ComponentArray<ActualT>();
+		}		
 	}
 
 	inline size_t build_signature(const Metatype** types, size_t count) {
@@ -497,34 +579,6 @@ namespace decs2 {
 			contA:;
 			}
 		}
-		//else {
-		//	for (int i = 0; i < world->archetypeSignatures.size(); i++) {
-		//
-		//		//if there is a perfect match, doing a xor will have it be 0
-		//		uint64_t xorTest = world->archetypeSignatures[i] ^ matcher;
-		//
-		//		if (xorTest == 0) {
-		//
-		//			auto componentList = world->archetypes[i]->componentList;
-		//			if (componentList->components.size() == count) {
-		//				for (int j = 0; j < componentList->components.size(); j++) {
-		//
-		//					if (componentList->components[j].type->name_hash != typelist[j]->name_hash)
-		//					{
-		//						//mismatch, inmediately continue
-		//						goto contB;
-		//					}
-		//				}
-		//
-		//				//everything matched. Found. Return inmediately
-		//				return world->archetypes[i];
-		//			}
-		//		}
-		//
-		//	contB:;
-		//	}
-		//}
-		
 
 		//not found, create a new one
 		
@@ -729,7 +783,40 @@ namespace decs2 {
 	template<typename CA, typename CB, typename F>
 	void iterate_entities(ECSWorld* world, F&& function);
 
+	template<typename F>
+	void iterate_matching_archetypes(ECSWorld* world, const Query& query, F&& function) {
+		
+		for (int i = 0; i < world->archetypeSignatures.size(); i++) {
 
+			//if there is a good match, doing an and not be 0
+			uint64_t includeTest = world->archetypeSignatures[i] & query.require_matcher;
+
+			//implement later
+			uint64_t excludeTest = world->archetypeSignatures[i] & query.exclude_matcher;
+			if (includeTest != 0) {
+
+				auto componentList = world->archetypes[i]->componentList;
+
+				//dumb algo, optimize later
+				int matches = 0;
+				for (int mtA = 0; mtA < query.require_comps.size(); mtA++) {
+
+					for (auto cmp : componentList->components) {
+						
+						if (cmp.type->name_hash == query.require_comps[mtA].name_hash) {
+							matches++;
+							break;
+						}
+					}
+				}
+				//all perfect
+				if (matches == query.require_comps.size()) {
+
+					function(world->archetypes[i]);
+				}
+			}
+		}
+	}
 
 	template<typename F>
 	void iterate_matching_archetypes(ECSWorld* world, const Metatype** types, int count, F&& function)
@@ -792,7 +879,7 @@ namespace decs2 {
 			for (auto chunk : arch->chunks) {
 				function(chunk);
 			}
-			});
+		});
 	}
 
 	template<typename C>
@@ -878,7 +965,6 @@ namespace decs2 {
 		Archetype* newArch = oldarch;
 		if (typeFound) {
 
-
 			lenght--;
 			sort_metatypes(temporalMetatypeArray, lenght);
 
@@ -888,8 +974,8 @@ namespace decs2 {
 		}
 	}
 
-		template<typename CA, typename CB, typename F>
-		void iterate_entities(ECSWorld* world, F&& function)
+	template<typename CA, typename CB, typename F>
+	void iterate_entities(ECSWorld* world, F&& function)
 	{
 		const Metatype* types[] = { get_metatype<CA>(),get_metatype<CB>() };
 		iterate_matching_chunks(world, types, 2, [&](DataChunk* chnk) {
@@ -900,12 +986,11 @@ namespace decs2 {
 			assert(bcrray.chunkOwner != nullptr);
 
 			auto earray = get_chunk_array<EntityID>(chnk);
-			for (int i = 0; i < chnk->header.last; i++) {
+			for (int i = chnk->header.last - 1; i >= 0; i--) {
 				function(earray[i], acrray[i], bcrray[i]);
 			}
 			});
 	}
-
 	template<typename CA, typename F>
 	void iterate_entities(ECSWorld* world, F&& function)
 	{
@@ -916,11 +1001,94 @@ namespace decs2 {
 			assert(acrray.chunkOwner != nullptr);
 
 			auto earray = get_chunk_array<EntityID>(chnk);
-			for (int i = 0; i < chnk->header.last; i++) {
+			for (int i = chnk->header.last-1 ; i >= 0; i--) {
 				function(earray[i], acrray[i]);
 			}
 		});
 	}
+	template<typename... Type>
+	struct type_list {};
 
+	template<typename Class, typename Ret, typename... Args>
+	type_list<Args...> args(Ret(Class::*)(Args...) const);
+	
+
+	template<typename A,typename Func>
+	void entity_chunk_iterate(DataChunk* chnk, Func&& function) {
+		auto array0 = get_chunk_array<A>(chnk);
+
+		assert(array0.chunkOwner == chnk);
+
+		for (int i = chnk->header.last - 1; i >= 0; i--) {
+			function(array0[i]);
+		}
+	}
+	template<typename A, typename B, typename Func>
+	void entity_chunk_iterate(DataChunk* chnk, Func&& function) {
+		
+		auto array0 = get_chunk_array<A>(chnk);
+		auto array1 = get_chunk_array<B>(chnk);
+
+		assert(array0.chunkOwner == chnk);
+		assert(array1.chunkOwner == chnk);
+
+		for (int i = chnk->header.last - 1; i >= 0; i--) {
+			function(array0[i], array1[i]);
+		}
+	}
+	template<typename A, typename B,typename C, typename Func>
+	void entity_chunk_iterate(DataChunk* chnk, Func&& function) {
+
+		auto array0 = get_chunk_array<A>(chnk);
+		auto array1 = get_chunk_array<B>(chnk);
+		auto array2 = get_chunk_array<C>(chnk);
+
+			assert(array0.chunkOwner == chnk);
+			assert(array1.chunkOwner == chnk);
+			assert(array2.chunkOwner == chnk);
+
+			for (int i = chnk->header.last - 1; i >= 0; i--) {
+				function(array0[i], array1[i], array2[i]);
+			}
+	}
+	template<typename A, typename B, typename C,typename D, typename Func>
+		void entity_chunk_iterate(DataChunk* chnk, Func&& function) {
+
+		auto array0 = get_chunk_array<A>(chnk);
+		auto array1 = get_chunk_array<B>(chnk);
+		auto array2 = get_chunk_array<C>(chnk);
+		auto array3 = get_chunk_array<D>(chnk);
+
+		assert(array0.chunkOwner == chnk);
+		assert(array1.chunkOwner == chnk);
+		assert(array2.chunkOwner == chnk);
+		assert(array3.chunkOwner == chnk);
+		for (int i = chnk->header.last - 1; i >= 0; i--) {
+			function(array0[i], array1[i], array2[i], array3[i]);
+		}
+	}
+	template<typename ...Args, typename Func>
+	void unpack_chunk(type_list<Args...> types, DataChunk* chunk, Func&& function) {
+		entity_chunk_iterate<Args...>(chunk, function);
+	}
+	template<typename ...Args>
+	Query& unpack_querywith(type_list<Args...> types, Query& query) {
+		return query.With<Args...>();
+	}
+	template<typename Func>
+	void entity_foreach(ECSWorld* world, Func&& function) {
+		using params = decltype(args(&Func::operator()));
+
+		Query query;
+		unpack_querywith(params{},query).Build();
+
+		iterate_matching_archetypes(world, query, [&](Archetype* arch) {
+
+			for (auto chnk : arch->chunks) {
+			
+				unpack_chunk(params{}, chnk, function);
+			}
+		});
+	}
 }
 
