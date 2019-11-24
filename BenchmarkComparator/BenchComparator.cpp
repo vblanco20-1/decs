@@ -812,7 +812,7 @@ TEST_CASE("basic ecs features", "[bit-tree,!benchmark]") {
 		meter.measure([&](int num) {
 			long int count = 0;
 
-			iterate_entities<I1, I2>(&tstworld, [&](EntityID id, I1& c, I2&c2) {
+			tstworld.for_each([&](EntityID id,const I1& c ,const I2&c2) {
 				count += c.val;
 			});
 
@@ -870,10 +870,9 @@ TEST_CASE("basic ecs features", "[bit-tree,!benchmark]") {
 		ECSWorld worldt;
 		pathological_build(&worldt, 1000000);
 		meter.measure([&](int idx) {			
-			int count = 0;;
-			//iterate_entities<Comp128<4>, Comp128<5>>(&worldt, [&](EntityID id, auto& c, auto& cb) {
-				
-			entity_foreach(&worldt, [&](EntityID id,Comp128<4>& c, Comp128<5>& cb) {
+			int count = 0;				
+			
+			worldt.for_each([&](EntityID id,Comp128<4>& c, Comp128<5>& cb) {
 				count += (c.a + cb.b) * idx;
 			});
 			
@@ -1060,7 +1059,7 @@ int main(int argc, char* argv[])
 	Catch::Session session; // There must be exactly one instance
 
 	
-#if 1
+#if 0
 	for (int i = 0; i < 1000; i++) {
 		ECSWorld benchworld;
 		{
@@ -1091,7 +1090,7 @@ int main(int argc, char* argv[])
 				//	count += add_comps(c,cb)+j;
 				//	});
 			
-				entity_foreach(&benchworld, [&](EntityID id, Comp128<4>& c, Comp128<5>& cb) {
+				benchworld.for_each([&](EntityID id, Comp128<4>& c, Comp128<5>& cb) {
 					count += (c.a + cb.b) * j;
 				});
 

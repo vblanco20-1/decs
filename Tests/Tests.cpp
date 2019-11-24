@@ -1,7 +1,72 @@
 #include "pch.h"
 #include "CppUnitTest.h"
+#include <random>
 
 using namespace Microsoft::VisualStudio::CppUnitTestFramework;
+
+
+template<int N>
+struct Comp128 {
+	size_t a;
+	size_t b;
+
+	Comp128() {
+		a = N;
+		b = N * 2;
+	}
+};
+using namespace decs2;
+
+std::vector<EntityID> patho_build(ECSWorld* world, int amount) {
+	std::mt19937 rng(0);
+	std::uniform_int_distribution<int> uniform_dist(0, 10);
+
+	auto rngcheck = [&]() {return uniform_dist(rng) < 5; };
+
+	//ECSWorld *world = new ECSWorld();
+	const Metatype* types[] = { get_metatype<Comp128<1>>() };
+	Archetype* arc1 = find_or_create_archetype(world, types, 1);
+
+	std::vector<EntityID> ids;
+	ids.reserve(amount);
+	for (int i = 0; i < amount; i++) {
+		EntityID id = create_entity_with_archetype(arc1);
+		ids.push_back(id);
+		if (rngcheck()) {
+			add_component_to_entity(world, id, Comp128<2>{});
+		}
+		if (rngcheck()) {
+			add_component_to_entity(world, id, Comp128<3>{});
+		}
+		if (rngcheck()) {
+			add_component_to_entity(world, id, Comp128<4>{});
+		}
+		if (rngcheck()) {
+			add_component_to_entity(world, id, Comp128<5>{});
+		}
+		if (rngcheck()) {
+			add_component_to_entity(world, id, Comp128<6>{});
+		}
+		if (rngcheck()) {
+			add_component_to_entity(world, id, Comp128<7>{});
+		}
+		if (rngcheck()) {
+			add_component_to_entity(world, id, Comp128<8>{});
+		}
+		if (rngcheck()) {
+			add_component_to_entity(world, id, Comp128<9>{});
+		}
+		if (rngcheck()) {
+			add_component_to_entity(world, id, Comp128<10>{});
+		}
+		if (rngcheck()) {
+			add_component_to_entity(world, id, Comp128<11>{});
+		}
+		assert(is_entity_valid(world, id));
+	}
+	return ids;
+}
+
 
 struct I1 {
 	int val;
@@ -20,7 +85,7 @@ struct alignas(32) IAlign {
 struct IConstr {
 	int val{ 42 };
 };
-using namespace decs2;
+
 
 const Metatype* I1type = get_metatype<I1>();
 
@@ -198,8 +263,9 @@ namespace Tests
 			Assert::AreEqual(world.archetypes.size(), (size_t)3);
 		
 			int test1 = 0;
-
-			iterate_matching_archetypes(&world, types, 1, [&](Archetype*arch) {
+			Query query;
+			query.With<I1>().Build();
+			iterate_matching_archetypes(&world, query, [&](Archetype*arch) {
 				test1++;
 			});
 
@@ -207,15 +273,15 @@ namespace Tests
 			Assert::AreEqual(test1 == 3, true);
 
 			int test2 = 0;
-			iterate_matching_archetypes(&world, types+2, 1, [&](Archetype* arch) {
+			iterate_matching_archetypes(&world, Query{}.With<I3>().Build(), [&](Archetype* arch) {
 				test2++;
-				});
+			});
 
 
 			Assert::AreEqual(test2== 1, true);
 
 			int test3 = 0;
-			iterate_matching_archetypes(&world, types + 3, 1, [&](Archetype* arch) {
+			iterate_matching_archetypes(&world, Query{}.With<IAlign>().Build(), [&](Archetype* arch) {
 				test3++;
 				});
 
@@ -226,8 +292,9 @@ namespace Tests
 
 		TEST_METHOD(Entities)
 		{
+			{
 			ECSWorld world{};
-			
+
 			std::vector<EntityID> entities;
 
 			for (int i = 0; i < 1000; i++) {
@@ -237,7 +304,7 @@ namespace Tests
 			Assert::AreEqual(world.entities.size() == 1000, true);
 			Assert::AreEqual(world.live_entities == 1000, true);
 			for (auto eid : entities) {
-				deallocate_entity(&world,eid);
+				deallocate_entity(&world, eid);
 			}
 
 			Assert::AreEqual(world.entities.size() == 1000, true);
@@ -248,7 +315,35 @@ namespace Tests
 			}
 			Assert::AreEqual(world.entities.size() == 1000, true);
 			Assert::AreEqual(world.live_entities == 1000, true);
+
+			}
+			{
+				ECSWorld world2{};
+
+				auto pathentities = patho_build(&world2, 10000);
+
+				for (auto eid : pathentities) {
+					destroy_entity(&world2, eid);
+				}
+
+				Assert::AreEqual(world2.live_entities == 0, true);
+
+				pathentities = patho_build(&world2, 10000);
+				Assert::AreEqual(world2.live_entities == 10000, true);
+
+				std::random_device rd;
+				std::mt19937 g(rd());
+				std::shuffle(pathentities.begin(), pathentities.end(), g);
+
+				for (auto eid : pathentities) {
+					destroy_entity(&world2, eid);
+				}
+				Assert::AreEqual(world2.live_entities == 0, true);
+				Assert::AreEqual(world2.dead_entities == 10000, true);
+			}
 		}
+
+
 
 		TEST_METHOD(EntityComponentAddRemove) {
 
