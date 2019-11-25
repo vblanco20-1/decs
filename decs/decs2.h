@@ -719,7 +719,6 @@ namespace decs2 {
 		//copy all data from old chunk into new chunk
 		//bad iteration, fix later
 
-
 		struct Merge {
 			int msize;
 			int idxOld;
@@ -739,6 +738,7 @@ namespace decs2 {
 						mergarray[mergcount].idxNew = j;
 						mergarray[mergcount].idxOld = i;
 						mergarray[mergcount].msize = mtCp1->size;
+						mergcount++;
 					}
 				}
 			}
@@ -1061,6 +1061,7 @@ namespace decs2 {
 	//	}
 	//}
 
+	//by skypjack
 	template<typename... Args, typename Func>
 	void entity_chunk_iterate(DataChunk* chnk, Func&& function) {
 		auto tup = std::make_tuple(get_chunk_array<Args>(chnk)...);
