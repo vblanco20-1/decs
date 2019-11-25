@@ -54,6 +54,8 @@ namespace decs2 {
 		DestructorFn* destructor;
 		uint16_t size{ 0 };
 		uint16_t align{ 0 };
+
+		bool is_empty() const { return align == 0; };
 	};
 	struct MetatypeHash {
 		size_t name_hash{ 0 };
@@ -250,13 +252,15 @@ namespace decs2 {
 			meta.matcher_hash |= (uint64_t)0x1L << (uint64_t)((meta.name_hash) % 63L);
 			if (std::is_empty<T>::value)
 			{
+				meta.align = 0;
 				meta.size = 0;
 			}
 			else {
+				meta.align = alignof(T);
 				meta.size = sizeof(T);
 			}
 
-			meta.align = alignof(T);
+
 
 			meta.constructor = [](void* p) {
 				new(p) T{};
@@ -345,14 +349,19 @@ namespace decs2 {
 		for (size_t i = 0; i < count; i++) {
 			const Metatype* type = types[i];
 
-			//align properly
-			size_t remainder = offsets % type->align;
-			size_t oset = type->align - remainder;
-			offsets += oset;
+			if (type->align != 0) {
+				//align properly
+				size_t remainder = offsets % type->align;
+				size_t oset = type->align - remainder;
+				offsets += oset;
+			}
 
 			list->components.push_back({ type,offsets });
 
-			offsets += type->size * (itemCount);
+			if (type->align != 0) {
+				offsets += type->size * (itemCount);
+			}
+
 		}
 
 		//implement proper size handling later
@@ -378,9 +387,11 @@ namespace decs2 {
 				for (auto& cmp : cmpList->components) {
 					const Metatype* mtype = cmp.type;
 
-					void* ptr = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * index));
+					if (!mtype->is_empty()) {
+						void* ptr = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * index));
 
-					mtype->constructor(ptr);
+						mtype->constructor(ptr);
+					}
 				}
 			}
 
@@ -416,13 +427,15 @@ namespace decs2 {
 			for (auto& cmp : cmpList->components) {
 				const Metatype* mtype = cmp.type;
 
-				void* ptr = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * index));
+				if (!mtype->is_empty()) {
+					void* ptr = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * index));
 
-				mtype->destructor(ptr);
+					mtype->destructor(ptr);
 
-				if (bPop) {
-					void* ptrPop = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * popIndex));
-					memcpy(ptr, ptrPop, mtype->size);
+					if (bPop) {
+						void* ptrPop = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * popIndex));
+						memcpy(ptr, ptrPop, mtype->size);
+					}
 				}
 			}
 
@@ -717,14 +730,16 @@ namespace decs2 {
 
 		for (int i = 0; i < oldNcomps; i++) {
 			const Metatype* mtCp1 = oldClist->components[i].type;
-			for (int j = 0; j < newNcomps; j++) {
-				const Metatype* mtCp2 = newClist->components[j].type;
+			if (!mtCp1->is_empty()) {
+				for (int j = 0; j < newNcomps; j++) {
+					const Metatype* mtCp2 = newClist->components[j].type;
 
-				//pointers are stable
-				if (mtCp2 == mtCp1) {
-					mergarray[mergcount].idxNew = j;
-					mergarray[mergcount].idxOld = i;
-					mergarray[mergcount].msize = mtCp1->size;
+					//pointers are stable
+					if (mtCp2 == mtCp1) {
+						mergarray[mergcount].idxNew = j;
+						mergarray[mergcount].idxOld = i;
+						mergarray[mergcount].msize = mtCp1->size;
+					}
 				}
 			}
 		}
@@ -806,8 +821,8 @@ namespace decs2 {
 	template<typename F>
 	void iterate_matching_archetypes(ECSWorld* world, const Query& query, F&& function) {
 
-		for (int i = 0; i < world->archetypeSignatures.size(); i++) {
-
+		for (int i = 0; i < world->archetypeSignatures.size(); i++)
+		{
 			//if there is a good match, doing an and not be 0
 			uint64_t includeTest = world->archetypeSignatures[i] & query.require_matcher;
 
@@ -816,6 +831,30 @@ namespace decs2 {
 			if (includeTest != 0) {
 
 				auto componentList = world->archetypes[i]->componentList;
+
+				//might match an excluded component, check here
+				if (excludeTest != 0) {
+
+					bool invalid = false;
+					//dumb algo, optimize later					
+					for (int mtA = 0; mtA < query.exclude_comps.size(); mtA++) {
+
+						for (auto cmp : componentList->components) {
+
+							if (cmp.type->name_hash == query.exclude_comps[mtA].name_hash) {
+								//any check and we out
+								invalid = true;
+								break;
+							}
+						}
+						if (invalid) {
+							break;
+						}
+					}
+					if (invalid) {
+						continue;
+					}
+				}
 
 				//dumb algo, optimize later
 				int matches = 0;
@@ -835,7 +874,10 @@ namespace decs2 {
 					function(world->archetypes[i]);
 				}
 			}
+
+
 		}
+
 	}
 
 	//template<typename F>
@@ -955,7 +997,10 @@ namespace decs2 {
 			set_entity_archetype(newArch, id);
 		}
 		//optimize later
-		get_component<C>(world, id) = comp;
+		if (!type->is_empty()) {
+			get_component<C>(world, id) = comp;
+		}
+
 	}
 
 	template<typename C>
@@ -999,60 +1044,33 @@ namespace decs2 {
 	template<typename Class, typename Ret, typename... Args>
 	type_list<Args...> args(Ret(Class::*)(Args...) const);
 
-	template<typename A, typename Func>
-	void entity_chunk_iterate(DataChunk* chnk, Func&& function) {
-		auto array0 = get_chunk_array<A>(chnk);
+	//template<typename A, typename B, typename C, typename D, typename Func>
+	//void entity_chunk_iterate(DataChunk* chnk, Func&& function) {
+	//
+	//	auto array0 = get_chunk_array<A>(chnk);
+	//	auto array1 = get_chunk_array<B>(chnk);
+	//	auto array2 = get_chunk_array<C>(chnk);
+	//	auto array3 = get_chunk_array<D>(chnk);
+	//
+	//	assert(array0.chunkOwner == chnk);
+	//	assert(array1.chunkOwner == chnk);
+	//	assert(array2.chunkOwner == chnk);
+	//	assert(array3.chunkOwner == chnk);
+	//	for (int i = chnk->header.last - 1; i >= 0; i--) {
+	//		function(array0[i], array1[i], array2[i], array3[i]);
+	//	}
+	//}
 
-		assert(array0.chunkOwner == chnk);
+	template<typename... Args, typename Func>
+	void entity_chunk_iterate(DataChunk* chnk, Func&& function) {
+		auto tup = std::make_tuple(get_chunk_array<Args>(chnk)...);
+		(assert(std::get<decltype(get_chunk_array<Args>(chnk))>(tup).chunkOwner == chnk), ...);
 
 		for (int i = chnk->header.last - 1; i >= 0; i--) {
-			function(array0[i]);
+			function(std::get<decltype(get_chunk_array<Args>(chnk))>(tup)[i]...);
 		}
 	}
-	template<typename A, typename B, typename Func>
-	void entity_chunk_iterate(DataChunk* chnk, Func&& function) {
 
-		auto array0 = get_chunk_array<A>(chnk);
-		auto array1 = get_chunk_array<B>(chnk);
-
-		assert(array0.chunkOwner == chnk);
-		assert(array1.chunkOwner == chnk);
-
-		for (int i = chnk->header.last - 1; i >= 0; i--) {
-			function(array0[i], array1[i]);
-		}
-	}
-	template<typename A, typename B, typename C, typename Func>
-	void entity_chunk_iterate(DataChunk* chnk, Func&& function) {
-
-		auto array0 = get_chunk_array<A>(chnk);
-		auto array1 = get_chunk_array<B>(chnk);
-		auto array2 = get_chunk_array<C>(chnk);
-
-		assert(array0.chunkOwner == chnk);
-		assert(array1.chunkOwner == chnk);
-		assert(array2.chunkOwner == chnk);
-
-		for (int i = chnk->header.last - 1; i >= 0; i--) {
-			function(array0[i], array1[i], array2[i]);
-		}
-	}
-	template<typename A, typename B, typename C, typename D, typename Func>
-	void entity_chunk_iterate(DataChunk* chnk, Func&& function) {
-
-		auto array0 = get_chunk_array<A>(chnk);
-		auto array1 = get_chunk_array<B>(chnk);
-		auto array2 = get_chunk_array<C>(chnk);
-		auto array3 = get_chunk_array<D>(chnk);
-
-		assert(array0.chunkOwner == chnk);
-		assert(array1.chunkOwner == chnk);
-		assert(array2.chunkOwner == chnk);
-		assert(array3.chunkOwner == chnk);
-		for (int i = chnk->header.last - 1; i >= 0; i--) {
-			function(array0[i], array1[i], array2[i], array3[i]);
-		}
-	}
 	template<typename ...Args, typename Func>
 	void unpack_chunk(type_list<Args...> types, DataChunk* chunk, Func&& function) {
 		entity_chunk_iterate<Args...>(chunk, function);
@@ -1083,13 +1101,7 @@ namespace decs2 {
 		Query query;
 		unpack_querywith(params{}, query).Build();
 
-		iterate_matching_archetypes(this, query, [&](Archetype* arch) {
-
-			for (auto chnk : arch->chunks) {
-
-				unpack_chunk(params{}, chnk, function);
-			}
-			});
+		for_each<Func>(query, std::move(function));
 	}
 }
 
