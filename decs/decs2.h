@@ -236,8 +236,12 @@ namespace decs2 {
 
 		template<typename Func>
 		void for_each(Func&& function);
+
+		template<typename ... Comps>
+		EntityID create_entity();
 	};
 
+	
 
 
 
@@ -1103,6 +1107,17 @@ namespace decs2 {
 		unpack_querywith(params{}, query).Build();
 
 		for_each<Func>(query, std::move(function));
+	}
+
+
+	template<typename ...Comps>
+	EntityID decs2::ECSWorld::create_entity()
+	{
+		const Metatype* types[] = { get_metatype<Comps>()... };
+		size_t num = (sizeof(types) / sizeof(*types));
+
+		Archetype* arch = find_or_create_archetype(this, types, num);
+		return create_entity_with_archetype(arch);
 	}
 }
 
