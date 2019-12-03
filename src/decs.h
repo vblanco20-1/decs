@@ -106,7 +106,7 @@ namespace decs {
 				Metatype meta;
 				meta.hash = build_hash<T>();
 
-				if (std::is_empty<T>::value)
+				if constexpr (std::is_empty_v<T>)
 				{
 					meta.align = 0;
 					meta.size = 0;
@@ -967,7 +967,7 @@ namespace decs {
 				function(std::get<decltype(get_chunk_array<Args>(chnk))>(tup)[i]...);
 			}
 		}
-		
+
 
 		template<typename ...Args, typename Func>
 		void unpack_chunk(type_list<Args...> types, DataChunk* chunk, Func&& function) {
@@ -1171,10 +1171,11 @@ namespace decs {
 			static const Metatype* types[] = { adv::get_metatype<Comps>()... };
 			constexpr size_t num = (sizeof(types) / sizeof(*types));
 
+			adv::sort_metatypes(types, num);
 			arch = adv::find_or_create_archetype(this, types, num);
 		}
 		else {
-			arch = archetypes[0]; 
+			arch = archetypes[0];
 		}
 
 		return adv::create_entity_with_archetype(arch);
