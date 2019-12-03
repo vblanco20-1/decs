@@ -16,6 +16,10 @@ struct Comp128 {
 	}
 };
 using namespace decs2;
+struct CompID {
+	EntityID selfID;
+};
+
 
 std::vector<EntityID> patho_build(ECSWorld* world, int amount) {
 	std::mt19937 rng(0);
@@ -23,45 +27,54 @@ std::vector<EntityID> patho_build(ECSWorld* world, int amount) {
 
 	auto rngcheck = [&]() {return uniform_dist(rng) < 5; };
 
-	//ECSWorld *world = new ECSWorld();
-	const Metatype* types[] = { get_metatype<Comp128<1>>() };
-	Archetype* arc1 = find_or_create_archetype(world, types, 1);
-
 	std::vector<EntityID> ids;
 	ids.reserve(amount);
 	for (int i = 0; i < amount; i++) {
-		EntityID id = create_entity_with_archetype(arc1);
+		EntityID id = world->create_entity<Comp128<1>>();//create_entity_with_archetype(arc1);
 		ids.push_back(id);
+
+		add_component_to_entity(world, id, CompID{id});
+		assert(get_component<CompID>(world, id).selfID.index == id.index);
 		if (rngcheck()) {
 			add_component_to_entity(world, id, Comp128<2>{});
+			assert(get_component<CompID>(world, id).selfID.index == id.index);
 		}
 		if (rngcheck()) {
 			add_component_to_entity(world, id, Comp128<3>{});
+			assert(get_component<CompID>(world, id).selfID.index == id.index);
 		}
 		if (rngcheck()) {
 			add_component_to_entity(world, id, Comp128<4>{});
+			assert(get_component<CompID>(world, id).selfID.index == id.index);
 		}
 		if (rngcheck()) {
 			add_component_to_entity(world, id, Comp128<5>{});
+			assert(get_component<CompID>(world, id).selfID.index == id.index);
 		}
 		if (rngcheck()) {
 			add_component_to_entity(world, id, Comp128<6>{});
+			assert(get_component<CompID>(world, id).selfID.index == id.index);
 		}
 		if (rngcheck()) {
 			add_component_to_entity(world, id, Comp128<7>{});
+			assert(get_component<CompID>(world, id).selfID.index == id.index);
 		}
 		if (rngcheck()) {
 			add_component_to_entity(world, id, Comp128<8>{});
+			assert(get_component<CompID>(world, id).selfID.index == id.index);
 		}
 		if (rngcheck()) {
 			add_component_to_entity(world, id, Comp128<9>{});
+			assert(get_component<CompID>(world, id).selfID.index == id.index);
 		}
 		if (rngcheck()) {
 			add_component_to_entity(world, id, Comp128<10>{});
+			assert(get_component<CompID>(world, id).selfID.index == id.index);
 		}
 		if (rngcheck()) {
 			add_component_to_entity(world, id, Comp128<11>{});
 		}
+		assert(get_component<CompID>(world, id).selfID.index == id.index);
 		assert(is_entity_valid(world, id));
 	}
 	return ids;
@@ -351,17 +364,28 @@ namespace Tests
 			const Metatype* types[] = { I1type,I2type,I3type,IAligntype };
 			Archetype* arch1 = find_or_create_archetype(&world, types, 1);
 
-			auto et = create_entity_with_archetype(arch1);
+			//auto et = create_entity_with_archetype(arch1);
+			//
+			//Assert::AreEqual(has_component<I1>(&world,et), true);
+			//Assert::AreEqual(has_component<I2>(&world, et), false);
+			//
+			//add_component_to_entity<I2>(&world, et,I2{});
+			//
+			//Assert::AreEqual(has_component<I2>(&world, et), true);
+			//
+			//remove_component_from_entity<I2>(&world, et);
+			//Assert::AreEqual(has_component<I2>(&world, et), false);
 
-			Assert::AreEqual(has_component<I1>(&world,et), true);
-			Assert::AreEqual(has_component<I2>(&world, et), false);
-
-			add_component_to_entity<I2>(&world, et,I2{});
-
-			Assert::AreEqual(has_component<I2>(&world, et), true);
-
-			remove_component_from_entity<I2>(&world, et);
-			Assert::AreEqual(has_component<I2>(&world, et), false);
+			auto pathoentities = patho_build(&world, 1000);
+			bool bMatchedWell = true;
+			for (auto ety : pathoentities) {
+				bool matches = get_component<CompID>(&world,ety).selfID.index == ety.index;
+				
+				if (!matches) {
+					bMatchedWell = false;
+				}
+			}
+			Assert::AreEqual(bMatchedWell, true);
 		}
 	};
 }

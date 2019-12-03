@@ -848,37 +848,37 @@ TEST_CASE("basic ecs features", "[bit-tree,!benchmark]") {
 		});		
 	};
 
-	//BENCHMARK("Decs:  pathological create 1000k"){//(Catch::Benchmark::Chronometer meter) {
+	BENCHMARK("Decs:  pathological create 1000k"){//(Catch::Benchmark::Chronometer meter) {
+	
+		ECSWorld worldt;
+		
+		//meter.measure([&]() {
+	
+			
+			pathological_build(&worldt, 1000000);
+			int count = 0;;
+			worldt.for_each([&](EntityID id, Comp128<4>& c) {
+						count += (c.a + c.b);
+			});
+	
+			return worldt.archetypes.size() + count;
+		//});
+	};
+
+	//BENCHMARK_ADVANCED("Decs:  pathological iterate 1000k") (Catch::Benchmark::Chronometer meter) {
 	//
 	//	ECSWorld worldt;
-	//	
-	//	//meter.measure([&]() {
-	//
+	//	pathological_build(&worldt, 1000000);
+	//	meter.measure([&](int idx) {			
+	//		int count = 0;				
 	//		
-	//		pathological_build(&worldt, 1000000);
-	//		int count = 0;;
-	//		iterate_entities<Comp128<2>>(&worldt, [&](EntityID id, Comp128<2>& c) {
-	//			count += c.a;
-	//			});
-	//
+	//		worldt.for_each([&](EntityID id,Comp128<4>& c, Comp128<5>& cb) {
+	//			count += (c.a + cb.b) * idx;
+	//		});
+	//		
 	//		return worldt.archetypes.size() + count;
-	//	//});
+	//		});
 	//};
-
-	BENCHMARK_ADVANCED("Decs:  pathological iterate 1000k") (Catch::Benchmark::Chronometer meter) {
-
-		ECSWorld worldt;
-		pathological_build(&worldt, 1000000);
-		meter.measure([&](int idx) {			
-			int count = 0;				
-			
-			worldt.for_each([&](EntityID id,Comp128<4>& c, Comp128<5>& cb) {
-				count += (c.a + cb.b) * idx;
-			});
-			
-			return worldt.archetypes.size() + count;
-			});
-	};
 	
 	BENCHMARK_ADVANCED("STL:  add 2 comps iterate 1000k :sanity check") (Catch::Benchmark::Chronometer meter) {
 
@@ -1059,7 +1059,7 @@ int main(int argc, char* argv[])
 	Catch::Session session; // There must be exactly one instance
 
 	
-#if 0
+#if 1
 	for (int i = 0; i < 1000; i++) {
 		ECSWorld benchworld;
 		{
@@ -1081,7 +1081,9 @@ int main(int argc, char* argv[])
 		}
 	
 		{
-			for (int j = 0; j < 10; j++) {
+			double total_time = 0;
+			int num_runs = 1;
+			for (int j = 0; j < num_runs; j++) {
 			
 				auto start = std::chrono::system_clock::now();
 			
@@ -1098,9 +1100,11 @@ int main(int argc, char* argv[])
 				auto end = std::chrono::system_clock::now();
 				auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 			
-				std::cout << benchworld.archetypes.size() << std::endl;
-				std::cout << "Decs-iter:" << (double(elapsed.count())) / 1000.f << "ms    " << count << '\n';
+				total_time += (double(elapsed.count())) / 1000.f;
 			}
+			std::cout << benchworld.archetypes.size() << std::endl;
+			std::cout << "Decs-iter:" << total_time/ num_runs << "ms    " << '\n';
+
 		}
 
 		//{

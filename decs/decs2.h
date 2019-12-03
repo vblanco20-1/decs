@@ -10,15 +10,6 @@
 #include <tuple>
 #include <type_traits>
 
-struct TestC1 {
-	float x;
-	float y;
-	float z;
-};
-struct TestC2 {
-	std::vector<TestC1> cmps;
-};
-
 #pragma warning( disable : 4267 )
 
 inline const uint64_t hash_64_fnv1a(const void* key, const uint64_t len) {
@@ -36,11 +27,28 @@ inline const uint64_t hash_64_fnv1a(const void* key, const uint64_t len) {
 	return hash;
 }
 
+//forward declarations
 namespace decs2 {
 	using byte = unsigned char;
 	static_assert (sizeof(byte) == 1, "size of 1 byte isnt 1 byte");
 	static const size_t BLOCK_MEMORY_16K = 16384;
 	static const size_t BLOCK_MEMORY_8K = 8192;
+
+	struct Metatype;
+	struct MetatypeHash;
+	struct EntityID;
+	struct DataChunkHeader;
+	struct DataChunk;
+	struct ChunkComponentList;
+	struct Archetype;
+	struct EntityStorage;
+	struct Query;
+	struct ECSWorld;
+}
+
+
+namespace decs2 {
+	
 
 	struct Metatype {
 
@@ -159,19 +167,19 @@ namespace decs2 {
 		bool built{ false };
 
 		template<typename... C>
-		Query& With() {
+		Query& with() {
 			require_comps.insert(require_comps.end(), { build_metatype_hash<C>()... });
 
 			return *this;
 		}
 		template<typename... C>
-		Query& Exclude() {
+		Query& exclude() {
 			exclude_comps.insert(exclude_comps.end(), { build_metatype_hash<C>()... });
 
 			return *this;
 		}
 
-		Query& Build() {
+		Query& build() {
 			auto compare_hash = [](const MetatypeHash& A, const MetatypeHash& B) {
 				return A.name_hash < B.matcher_hash;
 			};
@@ -241,12 +249,6 @@ namespace decs2 {
 		EntityID create_entity();
 	};
 
-	
-
-
-
-
-
 	template<typename T>
 	static const  Metatype build_metatype() {
 		static const Metatype type = []() {
@@ -263,8 +265,6 @@ namespace decs2 {
 				meta.align = alignof(T);
 				meta.size = sizeof(T);
 			}
-
-
 
 			meta.constructor = [](void* p) {
 				new(p) T{};
@@ -1082,7 +1082,7 @@ namespace decs2 {
 	}
 	template<typename ...Args>
 	Query& unpack_querywith(type_list<Args...> types, Query& query) {
-		return query.With<Args...>();
+		return query.with<Args...>();
 	}
 
 	template<typename Func>
@@ -1104,16 +1104,15 @@ namespace decs2 {
 		using params = decltype(args(&Func::operator()));
 
 		Query query;
-		unpack_querywith(params{}, query).Build();
+		unpack_querywith(params{}, query).build();
 
 		for_each<Func>(query, std::move(function));
 	}
 
-
 	template<typename ...Comps>
 	EntityID decs2::ECSWorld::create_entity()
 	{
-		const Metatype* types[] = { get_metatype<Comps>()... };
+		static const Metatype* types[] = { get_metatype<Comps>()... };
 		size_t num = (sizeof(types) / sizeof(*types));
 
 		Archetype* arch = find_or_create_archetype(this, types, num);
