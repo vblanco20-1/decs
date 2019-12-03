@@ -94,10 +94,12 @@ TEST(Basic, Components)
 		world.add_component<TestCompB>(et, TestCompB{});
 
 		EXPECT_EQ(world.get_component<TestComp>(et).i, TestComp{ 1 }.i);
+		EXPECT_TRUE(world.has_component<TestComp>(et));
 
 		world.remove_component<TestCompB>(et);
 
 		EXPECT_EQ(world.get_component<TestComp>(et).i, TestComp{ 1 }.i);
+		EXPECT_FALSE(world.has_component<TestCompB>(et));
 	}
 }
 

@@ -309,8 +309,12 @@ namespace decs {
 		void add_component(EntityID id, C& comp);
 		template<typename C>
 		void add_component(EntityID id);
+
 		template<typename C>
 		void remove_component(EntityID id);
+
+		template<typename C>
+		bool has_component(EntityID id);
 
 		template<typename C>
 		C& get_component(EntityID id);
@@ -1154,6 +1158,13 @@ namespace decs {
 	inline void ECSWorld::remove_component(EntityID id)
 	{
 		adv::remove_component_from_entity<C>(this, id);
+	}
+
+
+	template<typename C>
+	bool ECSWorld::has_component(EntityID id)
+	{
+		return adv::has_component<C>(this, id);
 	}
 
 	template<typename C>
