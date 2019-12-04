@@ -323,6 +323,8 @@ namespace decs {
 		inline EntityID new_entity();
 
 		inline void destroy(EntityID eid);
+
+		Archetype* get_empty_archetype() { return archetypes[0]; };
 	};
 
 	template<typename T>
@@ -1186,7 +1188,7 @@ namespace decs {
 			arch = adv::find_or_create_archetype(this, types, num);
 		}
 		else {
-			arch = archetypes[0];
+			arch = get_empty_archetype();
 		}
 
 		return adv::create_entity_with_archetype(arch);
