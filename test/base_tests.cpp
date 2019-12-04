@@ -131,7 +131,7 @@ TEST(Basic, Iteration) {
 		world.destroy(e2);
 		
 		count = 0; 
-		world.for_each([&](EntityID id,TestComp& comp) {
+		world.for_each([&](EntityID id,const TestComp& comp) {
 			count++;
 		});
 		

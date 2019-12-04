@@ -28,25 +28,10 @@
 #include <assert.h>
 #include <robin_hood.h>
 #include <tuple>
-#include <type_traits>
-
+#include <iostream>
 
 #pragma warning( disable : 4267 )
 
-inline const uint64_t hash_64_fnv1a(const void* key, const uint64_t len) {
-
-	const char* data = (char*)key;
-	uint64_t hash = 0xcbf29ce484222325;
-	uint64_t prime = 0x100000001b3;
-
-	for (int i = 0; i < len; ++i) {
-		uint8_t value = data[i];
-		hash = hash ^ value;
-		hash *= prime;
-	}
-
-	return hash;
-}
 
 //forward declarations
 namespace decs {
@@ -69,12 +54,53 @@ namespace decs {
 
 
 namespace decs {
+	inline constexpr uint64_t hash_64_fnv1a(const char* key, const uint64_t len) {
+
+		uint64_t hash = 0xcbf29ce484222325;
+		uint64_t prime = 0x100000001b3;
+
+		for (int i = 0; i < len; ++i) {
+			uint8_t value = key[i];
+			hash = hash ^ value;
+			hash *= prime;
+		}
+
+		return hash;
+	}
+
+	inline constexpr uint64_t hash_fnv1a(const char* key){
+		uint64_t hash = 0xcbf29ce484222325;
+		uint64_t prime = 0x100000001b3;
+
+		int i = 0;
+		while(key[i]){
+			uint8_t value = key[i++];
+			hash = hash ^ value;
+			hash *= prime;			
+		}
+
+		return hash;
+	}
+	
+	
 	struct MetatypeHash {
 		size_t name_hash{ 0 };
 		size_t matcher_hash{ 0 };
 
 		bool operator==(const MetatypeHash& other)const {
 			return name_hash == other.name_hash;
+		}
+		template<typename T>
+		static constexpr const char* name_detail() {
+			return __FUNCSIG__;
+		}
+
+		template<typename T>
+		static constexpr size_t hash() {
+
+			//static_assert(!std::is_reference_v<T>, "dont send references to hash");
+			//static_assert(!std::is_const_v<T>, "dont send const to hash");
+			return hash_fnv1a(name_detail<T>());
 		}
 	};
 	struct Metatype {
@@ -94,38 +120,39 @@ namespace decs {
 
 
 		template<typename T>
-		static const MetatypeHash build_hash() {
+		static constexpr MetatypeHash build_hash() {
+			
+			using sanitized = std::remove_const_t<std::remove_reference_t<T>>;	
+
 			MetatypeHash hash;
-			hash.name_hash = typeid(T).hash_code();
+			hash.name_hash = MetatypeHash::hash<sanitized>();
 			hash.matcher_hash |= (uint64_t)0x1L << (uint64_t)((hash.name_hash) % 63L);
 			return hash;
 		};
 		template<typename T>
-		static const Metatype build() {
-			static const Metatype type = []() {
-				Metatype meta;
-				meta.hash = build_hash<T>();
+		static constexpr Metatype build() {
 
-				if constexpr (std::is_empty_v<T>)
-				{
-					meta.align = 0;
-					meta.size = 0;
-				}
-				else {
-					meta.align = alignof(T);
-					meta.size = sizeof(T);
-				}
+			Metatype meta{};
+			meta.hash = build_hash<T>();
 
-				meta.constructor = [](void* p) {
-					new(p) T{};
-				};
-				meta.destructor = [](void* p) {
-					((T*)p)->~T();
-				};
+			if constexpr (std::is_empty_v<T>)
+			{
+				meta.align = 0;
+				meta.size = 0;
+			}
+			else {
+				meta.align = alignof(T);
+				meta.size = sizeof(T);
+			}
 
-				return meta;
-			}();
-			return type;
+			meta.constructor = [](void* p) {
+				new(p) T{};
+			};
+			meta.destructor = [](void* p) {
+				((T*)p)->~T();
+			};
+
+			return meta;
 		};
 
 	};
@@ -338,7 +365,7 @@ namespace decs {
 			return ComponentArray<EntityID>(ptr, chunk);
 		}
 		else {
-			MetatypeHash hash = Metatype::build_hash<ActualT>();
+			constexpr MetatypeHash hash = Metatype::build_hash<ActualT>();
 
 			for (auto cmp : chunk->header.componentList->components) {
 				if (cmp.hash == hash)
@@ -369,12 +396,12 @@ namespace decs {
 		template<typename T>
 		static const Metatype* get_metatype() {
 			static const Metatype* mt = []() {
-				auto name_hash = typeid(T).hash_code();
+				constexpr size_t name_hash = Metatype::build_hash<T>().name_hash;
 
 				auto type = metatype_cache.find(name_hash);
 				if (type == metatype_cache.end()) {
-					Metatype type = Metatype::build<T>();
-					metatype_cache[name_hash] = type;
+					constexpr Metatype newtype = Metatype::build<T>();
+					metatype_cache[name_hash] = newtype;
 				}
 				return &metatype_cache[name_hash];
 			}();
