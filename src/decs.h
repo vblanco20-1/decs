@@ -68,21 +68,61 @@ namespace decs {
 		return hash;
 	}
 
-	inline constexpr uint64_t hash_fnv1a(const char* key){
+	inline constexpr uint64_t hash_fnv1a(const char* key) {
 		uint64_t hash = 0xcbf29ce484222325;
 		uint64_t prime = 0x100000001b3;
 
 		int i = 0;
-		while(key[i]){
+		while (key[i]) {
 			uint8_t value = key[i++];
 			hash = hash ^ value;
-			hash *= prime;			
+			hash *= prime;
 		}
 
 		return hash;
 	}
-	
-	
+
+	template<typename T, int BucketSize>
+	struct HashCache {
+
+		struct Bucket {
+			std::array<T, BucketSize> items;
+			std::array<size_t, BucketSize> item_hashes;
+		};
+
+		HashCache() {
+			for (int i = 0; i < 8; ++i) {
+				buckets[i] = Bucket{};
+			}
+		}
+
+		std::array<Bucket, 8> buckets;
+
+		//bool find(size_t hash, T& outItem) {
+		//	const unsigned int idx = hash & (7);
+		//	for (int i = 0; i < BucketSize; ++i) {
+		//		if (buckets[idx].item_hashes[i] == hash) {
+		//			outItem = ;
+		//			return true;
+		//		}
+		//	}
+		//	return false;
+		//};
+		//void insert(const T& item, size_t hash) {
+		//
+		//	const unsigned int idx = hash & (7);
+		//
+		//	T swap = item;
+		//	size_t swap_hash = hash;
+		//
+		//	for (int i = 0; i < BucketSize; ++i) {
+		//
+		//		std::swap(buckets[idx].item_hashes[i], swap_hash);
+		//		std::swap(buckets[idx].items[i], swap);
+		//	}
+		//};
+	};
+
 	struct MetatypeHash {
 		size_t name_hash{ 0 };
 		size_t matcher_hash{ 0 };
@@ -121,8 +161,8 @@ namespace decs {
 
 		template<typename T>
 		static constexpr MetatypeHash build_hash() {
-			
-			using sanitized = std::remove_const_t<std::remove_reference_t<T>>;	
+
+			using sanitized = std::remove_const_t<std::remove_reference_t<T>>;
 
 			MetatypeHash hash;
 			hash.name_hash = MetatypeHash::hash<sanitized>();
@@ -154,7 +194,6 @@ namespace decs {
 
 			return meta;
 		};
-
 	};
 
 	//has stable pointers, use name_hash for it
@@ -308,6 +347,8 @@ namespace decs {
 		//bytemask hash for checking
 		std::vector<size_t> archetypeSignatures;
 
+		robin_hood::unordered_flat_map<uint64_t, void*> singleton_map{};
+
 		int live_entities{ 0 };
 		int dead_entities{ 0 };
 		inline ECSWorld();
@@ -345,6 +386,14 @@ namespace decs {
 
 		template<typename C>
 		C& get_component(EntityID id);
+
+		template<typename C>
+		C* set_singleton();
+		template<typename C>
+		C* set_singleton(C&& singleton);
+
+		template<typename C>
+		C* get_singleton();
 
 		template<typename ... Comps>
 		inline EntityID new_entity();
@@ -1158,7 +1207,7 @@ namespace decs {
 
 				adv::unpack_chunk(params{}, chnk, function);
 			}
-		});
+			});
 	}
 	template<typename Func>
 	void decs::ECSWorld::for_each(Func&& function)
@@ -1200,6 +1249,45 @@ namespace decs {
 	C& ECSWorld::get_component(EntityID id)
 	{
 		return adv::get_entity_component<C>(this, id);
+	}
+
+	template<typename C>
+	inline C* ECSWorld::set_singleton()
+	{
+		return set_singleton<C>(C{});
+	}
+
+	template<typename C>
+	inline C* ECSWorld::set_singleton(C&& singleton)
+	{
+		constexpr MetatypeHash type = Metatype::build_hash<C>();
+
+		C* old_singleton = get_singleton<C>();
+		if (old_singleton) {
+			*old_singleton = singleton;
+			return old_singleton;
+		}
+		else {
+
+			C* new_singleton = new C(singleton);
+			singleton_map[type.name_hash] = (void*)new_singleton;
+			return new_singleton;
+		}
+
+	}
+
+	template<typename C>
+	inline C* ECSWorld::get_singleton()
+	{
+		constexpr MetatypeHash type = Metatype::build_hash<C>();
+
+		auto lookup = singleton_map.find(type.name_hash);
+		if (lookup != singleton_map.end()) {
+			return (C*)singleton_map[type.name_hash];
+		}
+		else {
+			return nullptr;
+		}
 	}
 
 	template<typename ...Comps>
