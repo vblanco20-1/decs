@@ -138,8 +138,8 @@ namespace decs {
 		template<typename T>
 		static constexpr size_t hash() {
 
-			//static_assert(!std::is_reference_v<T>, "dont send references to hash");
-			//static_assert(!std::is_const_v<T>, "dont send const to hash");
+			static_assert(!std::is_reference_v<T>, "dont send references to hash");
+			static_assert(!std::is_const_v<T>, "dont send const to hash");
 			return hash_fnv1a(name_detail<T>());
 		}
 	};
@@ -275,16 +275,24 @@ namespace decs {
 		DataChunk* chunk;
 		uint32_t generation;
 		uint16_t chunkIndex;
+
+		bool operator==(const EntityStorage& other) const {
+			return chunk == other.chunk && generation == other.generation && chunkIndex == other.chunkIndex;
+		}
+
+		bool operator!=(const EntityStorage& other) const{
+			return !(other == *this);
+		}
 	};
 
 	struct Query {
 		std::vector<MetatypeHash> require_comps;
 		std::vector<MetatypeHash> exclude_comps;
-		std::vector<MetatypeHash> optional_comps;
+
 
 		size_t require_matcher{ 0 };
 		size_t exclude_matcher{ 0 };
-		size_t optional_matcher{ 0 };
+
 
 		bool built{ false };
 
@@ -294,6 +302,7 @@ namespace decs {
 
 			return *this;
 		}
+		
 		template<typename... C>
 		Query& exclude() {
 			exclude_comps.insert(exclude_comps.end(), { Metatype::build_hash<C>()... });
@@ -321,15 +330,12 @@ namespace decs {
 			};
 			require_comps.erase(std::remove_if(require_comps.begin(), require_comps.end(), remove_eid), require_comps.end());
 			exclude_comps.erase(std::remove_if(exclude_comps.begin(), exclude_comps.end(), remove_eid), exclude_comps.end());
-			optional_comps.erase(std::remove_if(optional_comps.begin(), optional_comps.end(), remove_eid), optional_comps.end());
 
 			std::sort(require_comps.begin(), require_comps.end(), compare_hash);
 			std::sort(exclude_comps.begin(), exclude_comps.end(), compare_hash);
-			std::sort(optional_comps.begin(), optional_comps.end(), compare_hash);
 
 			require_matcher = build_matcher(require_comps);
 			exclude_matcher = build_matcher(exclude_comps);
-			optional_matcher = build_matcher(optional_comps);
 			built = true;
 			return *this;
 		}
@@ -403,6 +409,27 @@ namespace decs {
 		Archetype* get_empty_archetype() { return archetypes[0]; };
 	};
 
+	template<typename C>
+	struct CachedRef
+	{
+		C* get_from(ECSWorld* world, EntityID target);
+
+		C* pointer;
+		EntityStorage storage;
+	};
+
+	
+
+	template<typename C>
+	C* CachedRef<C>::get_from(ECSWorld* world, EntityID target)
+	{	
+		if (world->entities[target.index] != storage) {		
+			pointer = &world->get_component<C>(target);
+			storage = world->entities[target.index];
+		}
+		return pointer;		
+	}
+
 	template<typename T>
 	inline auto get_chunk_array(DataChunk* chunk) {
 
@@ -420,14 +447,15 @@ namespace decs {
 				if (cmp.hash == hash)
 				{
 					void* ptr = (void*)((byte*)chunk + cmp.chunkOffset);
+					
 					return ComponentArray<ActualT>(ptr, chunk);
 				}
 			}
+			
 
 			return ComponentArray<ActualT>();
 		}
 	}
-
 
 	namespace adv {
 		//forward declarations
@@ -557,6 +585,21 @@ namespace decs {
 			chunk->header.ownerArchetype = arch;
 			arch->chunks.push_back(chunk);
 			return chunk;
+		}
+		inline void delete_chunk_from_archetype(DataChunk* chunk) {
+			Archetype* owner = chunk->header.ownerArchetype;
+			DataChunk* backChunk = owner->chunks.back();
+
+			if (backChunk != chunk) {
+				for (int i = 0; i < owner->chunks.size(); i++) {
+					if (owner->chunks[i] == chunk) {
+						owner->chunks[i] = backChunk;
+					}
+				}
+			}
+			owner->chunks.pop_back();
+			delete chunk;
+			
 		}
 		inline bool compare_metatypes(const Metatype* A, const Metatype* B) {
 			//return A->name_hash < B->name_hash;
@@ -1108,44 +1151,48 @@ namespace decs {
 
 			bool bWasFull = chunk->header.last == cmpList->chunkCapacity;
 			assert(chunk->header.last > index);
-			if (chunk->header.last > index) {
 
-				bool bPop = chunk->header.last > 1 && index != (chunk->header.last - 1);
-				int popIndex = chunk->header.last - 1;
+			bool bPop = chunk->header.last > 1 && index != (chunk->header.last - 1);
+			int popIndex = chunk->header.last - 1;
 
-				chunk->header.last--;
+			chunk->header.last--;
 
-				//clear and pop last
-				for (auto& cmp : cmpList->components) {
-					const Metatype* mtype = cmp.type;
+			//clear and pop last
+			for (auto& cmp : cmpList->components) {
+				const Metatype* mtype = cmp.type;
 
-					if (!mtype->is_empty()) {
-						void* ptr = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * index));
+				if (!mtype->is_empty()) {
+					void* ptr = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * index));
 
-						mtype->destructor(ptr);
+					mtype->destructor(ptr);
 
-						if (bPop) {
-							void* ptrPop = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * popIndex));
-							memcpy(ptr, ptrPop, mtype->size);
-						}
+					if (bPop) {
+						void* ptrPop = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * popIndex));
+						memcpy(ptr, ptrPop, mtype->size);
 					}
 				}
-
-				EntityID* eidptr = ((EntityID*)chunk);
-				eidptr[index] = EntityID{};
-
-				if (bWasFull) {
-					set_chunk_partial(chunk);
-				}
-
-				if (bPop) {
-
-					chunk->header.ownerArchetype->ownerWorld->entities[eidptr[popIndex].index].chunkIndex = index;
-					eidptr[index] = eidptr[popIndex];
-					return eidptr[index];
-				}
 			}
-			return EntityID{};
+
+			EntityID* eidptr = ((EntityID*)chunk);
+			eidptr[index] = EntityID{};
+
+
+			if (chunk->header.last == 0) {
+				delete_chunk_from_archetype(chunk);
+			}
+			else if (bWasFull) {
+				set_chunk_partial(chunk);
+			}
+
+			if (bPop) {	
+				chunk->header.ownerArchetype->ownerWorld->entities[eidptr[popIndex].index].chunkIndex = index;
+				eidptr[index] = eidptr[popIndex];
+
+				return eidptr[index];
+			}
+			else {
+				return EntityID{};
+			}
 		}
 
 		inline DataChunk* build_chunk(ChunkComponentList* cmpList) {
