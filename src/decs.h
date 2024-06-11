@@ -50,6 +50,12 @@ namespace decs {
 	struct EntityStorage;
 	struct Query;
 	struct ECSWorld;
+
+	//template<typename T>
+	//struct ComponentTraits{
+	//	static constexpr chunk_hashed = false;
+	//	static constexpr flag_component = false;
+	//};
 }
 
 
@@ -131,6 +137,7 @@ namespace decs {
 		DestructorFn* destructor;
 		uint16_t size{ 0 };
 		uint16_t align{ 0 };
+		//bool is_chunk_comp{false};
 
 		bool is_empty() const { return align == 0; };
 
@@ -152,6 +159,7 @@ namespace decs {
 			Metatype meta{};
 			meta.hash = build_hash<T>();
 			meta.name = MetatypeHash::name_detail<sanitized>();
+			//meta.is_chunk_comp = ComponentTraits<T>::chunk_hashed;
 			if constexpr (std::is_empty_v<T>)
 			{
 				meta.align = 0;
@@ -188,11 +196,12 @@ namespace decs {
 		struct DataChunk* prev{ nullptr };
 		struct DataChunk* next{ nullptr };
 		//max index that has an entity
-		int16_t last{ 0 };
+		int16_t alive{ 0 };
 		//we want the header aligned to 64 bits
-		int16_t pad1{ 0 };
-		int16_t pad2{ 0 };
-		int16_t pad3{ 0 };
+		//int16_t pad1{ 0 };
+		//int16_t pad2{ 0 };
+		//int16_t pad3{ 0 };
+		uint64_t separator{0};
 
 		inline uint64_t* version_ptr(uint16_t index) {
 			//take adress of the header
@@ -206,13 +215,12 @@ namespace decs {
 	struct alignas(32)DataChunk {
 		byte storage[BLOCK_MEMORY_16K - sizeof(DataChunkHeader*)];
 		DataChunkHeader *chunk_headers;
-
 		
 		inline DataChunkHeader* header(){
 			return chunk_headers;
 		}
 		inline uint32_t count(){
-			return header()->last;
+			return header()->alive;
 		}
 		inline uint64_t* version_ptr(uint16_t index) {
 			////take adress of the header
@@ -236,6 +244,7 @@ namespace decs {
 		std::vector<CmpPair> components;
 	};
 
+
 	template<typename T>
 	struct ComponentArray {
 
@@ -244,6 +253,7 @@ namespace decs {
 			data = (T*)pointer;
 			chunkOwner = owner;
 			index = cindex;
+			bitf = reinterpret_cast<uint64_t*>(data + chunkOwner->chunk_headers->componentList->chunkCapacity);
 		}
 
 		const T& operator[](size_t index) const {
@@ -268,23 +278,57 @@ namespace decs {
 		T* end() {
 			return data + chunkOwner->count();
 		}
+
+		uint64_t* bitfield() const{
+			return bitf;
+		}
+
+		void set_bit(size_t index) {
+			const uint16_t idx = (index >> 6);
+			const uint16_t shift = (index & 0x3F);
+			const uint64_t mask = (uint64_t(0x1) << shift);
+			bitfield()[idx] |= mask;
+		}
+		void clear_bit(size_t index) {
+			const uint16_t idx = (index >> 6);
+			const uint16_t shift = (index & 0x3F);
+			const uint64_t mask = (uint64_t(0x1) << shift);
+			const uint64_t invmask = uint64_t(-1) ^ mask;
+
+			bitfield()[idx] &= invmask;
+		}
+
+		bool get_bit(size_t index) const {
+			const uint16_t idx = (index >> 6);
+			const uint16_t shift = (index & 0x3F);
+			const uint64_t mask = (uint64_t(0x1) << shift);
+			const uint64_t andmask = bitfield()[idx] & mask;
+			return andmask;
+		}
+
 		int16_t size() {
 			return chunkOwner->count();
 		}
+		uint64_t* bitf;
 		T* data{ nullptr };
 		DataChunk* chunkOwner{ nullptr };
 		uint16_t index;
 	};
 
-
-
 	struct Archetype {
+
+		struct ChunkHolder {
+			DataChunk* chunk;
+			uint64_t separator;
+		};
+
 		ChunkComponentList* componentList;
 		struct ECSWorld* ownerWorld;
 		size_t componentHash;
 		int full_chunks;
 		//full chunks allways on the start of the array
-		std::vector<DataChunk*> chunks;
+		std::vector<ChunkHolder> chunks;
+		
 		bool chunklist_need_sort = true;
 	};
 
@@ -305,7 +349,6 @@ namespace decs {
 	struct Query {
 		std::vector<MetatypeHash> require_comps;
 		std::vector<MetatypeHash> exclude_comps;
-
 
 		size_t require_matcher{ 0 };
 		size_t exclude_matcher{ 0 };
@@ -380,8 +423,8 @@ namespace decs {
 		{
 			for (Archetype* arch : archetypes)
 			{
-				for (DataChunk* chunk : arch->chunks) {
-					delete chunk;
+				for (Archetype::ChunkHolder chunk : arch->chunks) {
+					delete chunk.chunk;
 				}
 				delete arch;
 			}
@@ -397,10 +440,14 @@ namespace decs {
 		void for_each(Query& query, Func&& function, uint64_t execution_id = 0);
 
 		template<typename Func>
+		void for_each_chunk(Query& query, Func&& function);
+
+		template<typename Func>
 		void for_each(Func&& function, uint64_t execution_id = 0);
 
 		template<typename C>
 		void add_component(EntityID id, C& comp);
+
 		template<typename C>
 		void add_component(EntityID id);
 
@@ -422,7 +469,7 @@ namespace decs {
 		C* get_singleton();
 
 		template<typename ... Comps>
-		inline EntityID new_entity();
+		inline EntityID new_entity(uint64_t separator = 0);
 
 		inline void destroy(EntityID eid);
 
@@ -455,7 +502,7 @@ namespace decs {
 	};
 
 	inline bool full(DataChunk* chnk) {
-		return chnk->header()->last == chnk->header()->componentList->chunkCapacity;
+		return chnk->header()->alive == chnk->header()->componentList->chunkCapacity;
 	}
 
 	template<typename C>
@@ -499,7 +546,7 @@ namespace decs {
 	namespace adv {
 		//forward declarations
 		inline int insert_entity_in_chunk(DataChunk* chunk, EntityID EID, bool bInitializeConstructors = true);
-		inline EntityID erase_entity_in_chunk(DataChunk* chunk, uint16_t index);
+		inline void erase_entity_in_chunk(DataChunk* chunk, uint16_t index, bool afterMove);
 		inline DataChunk* build_chunk(ChunkComponentList* cmpList);
 
 
@@ -527,9 +574,10 @@ namespace decs {
 		inline void reorder_chunks(Archetype* arch) {
 			
 			int archsize = arch->componentList->chunkCapacity;
-			std::partition(arch->chunks.begin(), arch->chunks.end(), [archsize](DataChunk* cnk) {
-				return cnk->count() == archsize;
-				});
+			std::partition(arch->chunks.begin(), arch->chunks.end(), [archsize](Archetype::ChunkHolder cnk) {
+				return cnk.chunk->count() == archsize;
+			});
+
 			arch->chunklist_need_sort = false;
 		}
 		//reorder archetype with the fullness
@@ -540,11 +588,7 @@ namespace decs {
 				arch->full_chunks++;
 
 				arch->chunklist_need_sort = true;
-				//do it properly later
-				//reorder_chunks(arch);
 			}
-
-
 		}
 		
 
@@ -555,16 +599,12 @@ namespace decs {
 
 			//do it properly later
 			arch->chunklist_need_sort = true;
-
-
-
-			//reorder_chunks(arch);
 		}
 
 		inline ChunkComponentList* build_component_list(const Metatype** types, size_t count) {
 			ChunkComponentList* list = new ChunkComponentList();
 
-			int compsize = sizeof(EntityID);
+			int compsize = sizeof(EntityID) + 1; // the +1 is to account for the deletion bitfield
 			for (size_t i = 0; i < count; i++) {
 
 				compsize += types[i]->size;
@@ -578,7 +618,8 @@ namespace decs {
 			uint32_t offsets = 0;
 			//reserve entity ids at the start
 			offsets += sizeof(EntityID) * itemCount;
-
+			//deletion bitfield
+			offsets += ((itemCount + 63)/ 64) * 8;
 			for (size_t i = 0; i < count; i++) {
 				const Metatype* type = types[i];
 
@@ -595,7 +636,6 @@ namespace decs {
 				if (!is_zero_sized) {
 					offsets += type->size * (itemCount);
 				}
-
 			}
 
 			//implement proper size handling later
@@ -608,24 +648,27 @@ namespace decs {
 
 		inline size_t build_signature(const Metatype** types, size_t count) {
 			size_t and_hash = 0;
-			//for (auto m : types)
+
 			for (int i = 0; i < count; i++)
 			{
-				//consider if the fancy hash is needed, there is a big slowdown
-				//size_t keyhash = ash_64_fnv1a(&types[i]->name_hash, sizeof(size_t));
-				//size_t keyhash = types[i]->name_hash;
-
 				and_hash |= types[i]->hash.matcher_hash;
-				//and_hash |=(uint64_t)0x1L << (uint64_t)((types[i]->name_hash) % 63L);
 			}
 			return and_hash;
 		}
 
-		inline DataChunk* create_chunk_for_archetype(Archetype* arch) {
+		inline DataChunk* create_chunk_for_archetype(Archetype* arch,uint64_t separator) {
 			DataChunk* chunk = build_chunk(arch->componentList);
 
+			//clear the entity aliveness list
+			auto elist = get_chunk_array<EntityID>(chunk);
+			int bfieldSize = (arch->componentList->chunkCapacity + 63) / 64;
+			for (int i = 0; i < bfieldSize; i++) {
+				elist.bitfield()[i] = 0;
+			}
+
+			chunk->header()->separator = separator;
 			chunk->header()->ownerArchetype = arch;
-			arch->chunks.push_back(chunk);
+			arch->chunks.push_back({chunk,separator});
 			return chunk;
 		}
 		inline void delete_chunk_header(DataChunkHeader* header) {
@@ -634,12 +677,12 @@ namespace decs {
 		}
 		inline void delete_chunk_from_archetype(DataChunk* chunk) {
 			Archetype* owner = chunk->header()->ownerArchetype;
-			DataChunk* backChunk = owner->chunks.back();
+			DataChunk* backChunk = owner->chunks.back().chunk;
 
 			if (backChunk != chunk) {
 				for (int i = 0; i < owner->chunks.size(); i++) {
-					if (owner->chunks[i] == chunk) {
-						owner->chunks[i] = backChunk;
+					if (owner->chunks[i].chunk == chunk) {
+						owner->chunks[i].chunk = backChunk;
 					}
 				}
 			}
@@ -753,8 +796,7 @@ namespace decs {
 			world->archetypeSignatures.push_back(matcher);
 			world->archetype_signature_map[matcher].push_back(newArch);
 
-			//we want archs to allways have 1 chunk at least, create initial
-			create_chunk_for_archetype(newArch);
+			//create_chunk_for_archetype(newArch);
 			return newArch;
 		}
 
@@ -815,33 +857,44 @@ namespace decs {
 
 		inline void destroy_entity(ECSWorld* world, EntityID id) {
 			assert(is_entity_valid(world, id));
-			erase_entity_in_chunk(world->entities[id.index].chunk, world->entities[id.index].chunkIndex);
+			erase_entity_in_chunk(world->entities[id.index].chunk, world->entities[id.index].chunkIndex,false);
 			deallocate_entity(world, id);
 		}
-		inline DataChunk* find_free_chunk(Archetype* arch) {
+		inline DataChunk* find_free_chunk(Archetype* arch,uint64_t separator) {
 			DataChunk* targetChunk = nullptr;
 			if (arch->chunks.size() == 0) {
-				targetChunk = create_chunk_for_archetype(arch);
+				targetChunk = create_chunk_for_archetype(arch,separator);
 			}
 			else {
 				if (arch->chunklist_need_sort) {
 					reorder_chunks(arch);
 				}
-				targetChunk = arch->chunks[arch->chunks.size() - 1];
+				//the chunks are now ordered so the beggining ones are full and the rest can allocate into, just iterate linear for now to find separator id
+
+				for(int i = arch->chunks.size() - 1; i >= 0; i--){
+					if(arch->chunks[i].separator == separator){
+						targetChunk = arch->chunks[i].chunk;
+						break;
+					}
+					else if(arch->chunks[i].chunk->count() == arch->componentList->chunkCapacity){
+						break;
+					}
+				}
+				
 				//chunk is full, create a new one
-				if (targetChunk->count() == arch->componentList->chunkCapacity) {
-					targetChunk = create_chunk_for_archetype(arch);
+				if (targetChunk == nullptr || targetChunk->count() == arch->componentList->chunkCapacity) {
+					targetChunk = create_chunk_for_archetype(arch,separator);
 				}
 			}
 			return targetChunk;
 		}
 
 
-		inline void move_entity_to_archetype(Archetype* newarch, EntityID id, bool bInitializeConstructors = true) {
+		inline void move_entity_to_archetype(Archetype* newarch, EntityID id, bool bInitializeConstructors,uint64_t separator) {
 
 			//insert into new chunk
 			DataChunk* oldChunk = newarch->ownerWorld->entities[id.index].chunk;
-			DataChunk* newChunk = find_free_chunk(newarch);
+			DataChunk* newChunk = find_free_chunk(newarch,separator);
 
 			int newindex = insert_entity_in_chunk(newChunk, id, bInitializeConstructors);
 			int oldindex = newarch->ownerWorld->entities[id.index].chunkIndex;
@@ -894,33 +947,34 @@ namespace decs {
 			}
 
 			//delete entity from old chunk
-			erase_entity_in_chunk(oldChunk, oldindex);
+			erase_entity_in_chunk(oldChunk, oldindex,true);
 
 			//assign entity chunk data
 			newarch->ownerWorld->entities[id.index].chunk = newChunk;
 			newarch->ownerWorld->entities[id.index].chunkIndex = newindex;
 		}
-		inline void set_entity_archetype(Archetype* arch, EntityID id) {
+		inline void set_entity_archetype(Archetype* arch, EntityID id,uint64_t separator) {
 
 			//if chunk is null, we are a empty entity
 			if (arch->ownerWorld->entities[id.index].chunk == nullptr) {
 
-				DataChunk* targetChunk = find_free_chunk(arch);
+				DataChunk* targetChunk = find_free_chunk(arch,separator);
 
 				int index = insert_entity_in_chunk(targetChunk, id);
 				arch->ownerWorld->entities[id.index].chunk = targetChunk;
 				arch->ownerWorld->entities[id.index].chunkIndex = index;
 			}
 			else {
-				move_entity_to_archetype(arch, id, false);
+				move_entity_to_archetype(arch, id, false,separator);
 			}
 		}
-		inline EntityID create_entity_with_archetype(Archetype* arch) {
+
+		inline EntityID create_entity_with_archetype(Archetype* arch, uint64_t separator) {
 			ECSWorld* world = arch->ownerWorld;
 
 			EntityID newID = allocate_entity(world);
 
-			set_entity_archetype(arch, newID);
+			set_entity_archetype(arch, newID,separator);
 
 			return newID;
 		}
@@ -931,6 +985,12 @@ namespace decs {
 			return world->entities[id.index].chunk->header()->ownerArchetype;
 		}
 
+		inline uint64_t get_entity_separator(ECSWorld* world, EntityID id)
+		{
+			assert(is_entity_valid(world, id));
+
+			return world->entities[id.index].chunk->header()->separator;
+		}
 
 		template<typename C>
 		bool has_component(ECSWorld* world, EntityID id);
@@ -1138,48 +1198,15 @@ namespace decs {
 		}
 
 		template<typename C>
-		void add_component_to_entity(ECSWorld* world, EntityID id)
-		{
-			//const Metatype* temporalMetatypeArray[32];
-
-			const Metatype* type = get_metatype<C>();
-
-			Archetype* oldarch = get_entity_archetype(world, id);
-			Archetype* newarch = make_archetype_by_adding_component(oldarch, type);
-			set_entity_archetype(newarch, id);
-#if 0
-			ChunkComponentList* oldlist = oldarch->componentList;
-			bool typeFound = false;
-			int lenght = oldlist->components.size();
-			for (int i = 0; i < oldlist->components.size(); i++) {
-				temporalMetatypeArray[i] = oldlist->components[i].type;
-
-				//the pointers for metatypes are allways fully stable
-				if (temporalMetatypeArray[i] == type) {
-					typeFound = true;
-				}
-			}
-
-			Archetype* newArch = oldarch;
-			if (!typeFound) {
-
-				temporalMetatypeArray[lenght] = type;
-				sort_metatypes(temporalMetatypeArray, lenght + 1);
-				lenght++;
-
-				newArch = find_or_create_archetype(world, temporalMetatypeArray, lenght);
-
-				set_entity_archetype(newArch, id);
-			}
-#endif
-		}
-		template<typename C>
 		void add_component_to_entity(ECSWorld* world, EntityID id, C& comp)
 		{
 			const Metatype* type = get_metatype<C>();
 
-			add_component_to_entity<C>(world, id);
+			uint64_t old_separator = get_entity_separator(world,id);
 
+			Archetype* oldarch = get_entity_archetype(world, id);
+			Archetype* newarch = make_archetype_by_adding_component(oldarch, type);
+			set_entity_archetype(newarch, id,old_separator);
 
 			//optimize later
 			if (!type->is_empty()) {
@@ -1204,13 +1231,12 @@ namespace decs {
 
 			if (old_archetype == newArch) return;
 
-
-			DataChunk* backChunk = old_archetype->chunks.back();
+			DataChunk* backChunk = old_archetype->chunks.back().chunk;
 
 			if (backChunk != chnk) {
 				for (int i = 0; i < old_archetype->chunks.size(); i++) {
-					if (old_archetype->chunks[i] == chnk) {
-						old_archetype->chunks[i] = backChunk;
+					if (old_archetype->chunks[i].chunk == chnk) {
+						old_archetype->chunks[i].chunk = backChunk;
 						break;
 					}
 				}
@@ -1222,11 +1248,8 @@ namespace decs {
 				old_archetype->full_chunks--;
 			}
 			old_archetype->chunklist_need_sort = true;
-			//reorder_chunks(old_archetype);
-			//patch chunk
 			
-
-			newArch->chunks.push_back(chnk);
+			newArch->chunks.push_back({chnk,0});
 
 			if (full(chnk))
 			{
@@ -1237,7 +1260,7 @@ namespace decs {
 			DataChunkHeader* new_header = allocate_chunk_header(newArch->componentList);
 			new_header->ownerArchetype = newArch;
 			new_header->componentList = newArch->componentList;
-			new_header->last = old_header->last;
+			new_header->alive = old_header->alive;
 			//TODO optimize this dumb loop
 			for (int oldc = 0; oldc < old_archetype->componentList->components.size(); oldc++) {
 				for (int newc = 0; newc < newArch->componentList->components.size(); newc++) {
@@ -1253,8 +1276,6 @@ namespace decs {
 			chnk->chunk_headers = new_header;
 
 			newArch->chunklist_need_sort = true;
-			
-
 		}
 		//adds a component to an entire chunk. If the component is a tag its a fast path
 		template<typename C>
@@ -1288,42 +1309,14 @@ namespace decs {
 		template<typename C>
 		void remove_component_from_entity(ECSWorld* world, EntityID id)
 		{
-			
-
 			const Metatype* type = get_metatype<C>();
 
+			uint64_t separator = get_entity_separator(world,id);
 			Archetype* oldarch = get_entity_archetype(world, id);
 
 			Archetype* newarch = make_archetype_by_adding_component(oldarch, type);
 
-			set_entity_archetype(newarch, id);
-#if 0
-			const Metatype* temporalMetatypeArray[32];
-			ChunkComponentList* oldlist = oldarch->componentList;
-			bool typeFound = false;
-			int lenght = oldlist->components.size();
-			for (int i = 0; i < lenght; i++) {
-				temporalMetatypeArray[i] = oldlist->components[i].type;
-
-				//the pointers for metatypes are allways fully stable
-				if (temporalMetatypeArray[i] == type) {
-					typeFound = true;
-					//swap last
-					temporalMetatypeArray[i] = oldlist->components[lenght - 1].type;
-				}
-			}
-
-			Archetype* newArch = oldarch;
-			if (typeFound) {
-
-				lenght--;
-				sort_metatypes(temporalMetatypeArray, lenght);
-
-				newArch = find_or_create_archetype(world, temporalMetatypeArray, lenght);
-
-				set_entity_archetype(newArch, id);
-			}
-#endif
+			set_entity_archetype(newarch, id,separator);
 		}
 
 		//by skypjack
@@ -1337,9 +1330,9 @@ namespace decs {
 				((std::get<decltype(get_chunk_array<Args>(chnk))>(tup).set_version(execution_id) ), ...);
 			}
 
-			for (int i = chnk->count() - 1; i >= 0; i--) {
+			iterate_chunk_active(chnk,[&](uint32_t i){
 				function(std::get<decltype(get_chunk_array<Args>(chnk))>(tup)[i]...);
-			}
+			});
 		}
 
 
@@ -1357,86 +1350,86 @@ namespace decs {
 
 			ChunkComponentList* cmpList = chunk->header()->componentList;
 
-			if (chunk->count() < cmpList->chunkCapacity) {
+			assert(chunk->count() < static_cast<uint32_t>(cmpList->chunkCapacity));
 
-				index = chunk->header()->last;
-				chunk->header()->last++;
+			ComponentArray<EntityID> entityList = get_chunk_array<EntityID>(chunk);
 
-				if (bInitializeConstructors) {
-					//initialize component
-					for (auto& cmp : cmpList->components) {
-						const Metatype* mtype = cmp.type;
+			//loop until finding a slot
+			for (size_t i = 0; i < cmpList->chunkCapacity; i++) {
+				if (!entityList.get_bit(i)) {
+					index = i;
+					break;
+				}
+			}
 
-						if (!mtype->is_empty()) {
-							void* ptr = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * index));
+			assert(index >= 0);
 
-							mtype->constructor(ptr);
-						}
+			chunk->header()->alive++;
+
+			if (bInitializeConstructors) {
+				//initialize component
+				for (auto& cmp : cmpList->components) {
+					const Metatype* mtype = cmp.type;
+
+					if (!mtype->is_empty()) {
+						void* ptr = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * index));
+
+						mtype->constructor(ptr);
 					}
 				}
+			}
 
+			//insert eid
+			entityList[index] = EID;
+			entityList.set_bit(index);
 
-				//insert eid
-				EntityID* eidptr = ((EntityID*)chunk);
-				eidptr[index] = EID;
-
-				//if full, reorder it on archetype
-				if (chunk->count() == cmpList->chunkCapacity) {
-					set_chunk_full(chunk);
-				}
+			//if full, reorder it on archetype
+			if (chunk->count() == cmpList->chunkCapacity) {
+				set_chunk_full(chunk);
 			}
 
 			return index;
 		}
 
 		//returns ID of the moved entity
-		inline EntityID erase_entity_in_chunk(DataChunk* chunk, uint16_t index) {
+		inline void erase_entity_in_chunk(DataChunk* chunk, uint16_t index, bool afterMove) {
 
 			ChunkComponentList* cmpList = chunk->header()->componentList;
 
 			bool bWasFull = chunk->count() == cmpList->chunkCapacity;
-			assert(chunk->count() > index);
+			
+			ComponentArray<EntityID> entityList = get_chunk_array<EntityID>(chunk);
+			assert(entityList.get_bit(index) == true);//we cant delete a entity that has been deleted already!
 
-			bool bPop = chunk->count() > 1 && index != (chunk->count() - 1);
-			int popIndex = chunk->count() - 1;
-
-			chunk->header()->last--;
-
-			//clear and pop last
+			//clear data
 			for (auto& cmp : cmpList->components) {
 				const Metatype* mtype = cmp.type;
 
 				if (!mtype->is_empty()) {
 					void* ptr = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * index));
 
-					mtype->destructor(ptr);
-
-					if (bPop) {
-						void* ptrPop = (void*)((byte*)chunk + cmp.chunkOffset + (mtype->size * popIndex));
-						memcpy(ptr, ptrPop, mtype->size);
+					//we dont need to call destructors after move, memzero just in case
+					if (!afterMove) {
+						
+						mtype->destructor(ptr);
+					}
+					else {
+						memset(ptr,0,mtype->size);
 					}
 				}
 			}
 
-			EntityID* eidptr = ((EntityID*)chunk);
-			eidptr[index] = EntityID{};
+			//clear bit and lower chunk count
+			entityList[index] = EntityID{};
+			entityList.clear_bit(index);
+			chunk->header()->alive--;
 
-
+			//remove from archetype
 			if (chunk->count() == 0) {
 				delete_chunk_from_archetype(chunk);
 			}
 			else if (bWasFull) {
 				set_chunk_partial(chunk);
-			}
-
-			if (bPop) {
-				chunk->header()->ownerArchetype->ownerWorld->entities[eidptr[popIndex].index].chunkIndex = index;
-				eidptr[index] = eidptr[popIndex];
-
-				return eidptr[index];
-			}
-			else {
-				return EntityID{};
 			}
 		}
 
@@ -1446,11 +1439,9 @@ namespace decs {
 
 			DataChunk* chunk = new DataChunk();
 
-			
-
 			chunk->chunk_headers = allocate_chunk_header(cmpList);
 
-			chunk->header()->last = 0;
+			chunk->header()->alive = 0;
 			chunk->header()->componentList = cmpList;
 			for (uint16_t i = 0; i < cmpList->components.size(); i++) {
 				*chunk->version_ptr(i) = 1;
@@ -1476,7 +1467,7 @@ namespace decs {
 		archetype_signature_map[0].push_back(nullArch);
 
 		//we want archs to allways have 1 chunk at least, create initial
-		adv::create_chunk_for_archetype(nullArch);
+		adv::create_chunk_for_archetype(nullArch,0);
 	}
 
 	template<typename Container>
@@ -1487,7 +1478,7 @@ namespace decs {
 
 			for (auto chnk : arch->chunks) {
 				count++;
-				container.push_back(chnk);
+				container.push_back(chnk.chunk);
 			}
 			});
 		return count;
@@ -1533,6 +1524,16 @@ namespace decs {
 	//}
 
 	template<typename Fn>
+	void iterate_chunk_active(DataChunk* ck, Fn&& fn) {
+		ComponentArray<EntityID> elist = get_chunk_array<EntityID>(ck);
+		for (uint32_t i = 0; i < ck->count(); i++) {
+			if (elist.get_bit(i)) {
+				fn(i);
+			}
+		}
+	}
+
+	template<typename Fn>
 	decs::PureSystem make_pure_system_chunk(Query& query,Fn&& function) {	
 			
 
@@ -1559,7 +1560,7 @@ namespace decs {
 
 			for (auto chnk : arch->chunks) {
 
-				adv::unpack_chunk(params{}, chnk, function, execution_id);
+				adv::unpack_chunk(params{}, chnk.chunk, function, execution_id);
 			}
 		});
 	}
@@ -1583,6 +1584,18 @@ namespace decs {
 		for_each<Func>(query, std::move(function),execution_id);
 	}
 
+	template<typename Func>
+	void decs::ECSWorld::for_each_chunk(Query& query,Func&& function)
+	{
+		adv::iterate_matching_archetypes(this, query, [&](Archetype* arch) {
+
+			for (auto chnk : arch->chunks) {
+
+				function(chnk.chunk,chnk.separator);
+			}
+		});
+	}
+
 	template<typename C>
 	inline void ECSWorld::add_component(EntityID id, C& comp)
 	{
@@ -1592,7 +1605,7 @@ namespace decs {
 	template<typename C>
 	void ECSWorld::add_component(EntityID id)
 	{
-		adv::add_component_to_entity<C>(this, id);
+		adv::add_component_to_entity<C>(this, id, C{});
 	}
 
 	template<typename C>
@@ -1664,7 +1677,7 @@ namespace decs {
 	}
 
 	template<typename ...Comps>
-	inline EntityID decs::ECSWorld::new_entity()
+	inline EntityID decs::ECSWorld::new_entity(uint64_t separator )
 	{
 		Archetype* arch = nullptr;
 		//empty component list will use the hardcoded null archetype
@@ -1679,7 +1692,7 @@ namespace decs {
 			arch = get_empty_archetype();
 		}
 
-		return adv::create_entity_with_archetype(arch);
+		return adv::create_entity_with_archetype(arch,separator);
 	}
 }
 
