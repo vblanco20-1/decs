@@ -253,7 +253,12 @@ namespace decs {
 			data = (T*)pointer;
 			chunkOwner = owner;
 			index = cindex;
-			bitf = reinterpret_cast<uint64_t*>(data + chunkOwner->chunk_headers->componentList->chunkCapacity);
+			if constexpr (std::is_same_v<T, EntityID>) {
+				bitf = reinterpret_cast<uint64_t*>(data + chunkOwner->chunk_headers->componentList->chunkCapacity);
+			}
+			else {
+				bitf = nullptr;
+			}
 		}
 
 		const T& operator[](size_t index) const {
@@ -1314,7 +1319,7 @@ namespace decs {
 			uint64_t separator = get_entity_separator(world,id);
 			Archetype* oldarch = get_entity_archetype(world, id);
 
-			Archetype* newarch = make_archetype_by_adding_component(oldarch, type);
+			Archetype* newarch = make_archetype_by_removing_component(oldarch, type);
 
 			set_entity_archetype(newarch, id,separator);
 		}

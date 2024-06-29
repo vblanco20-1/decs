@@ -70,7 +70,7 @@ TEST(Basic, NullEntities)
 
 		int count = 0;
 		for (auto chnk : world.archetypes[0]->chunks) {
-			count += chnk->header.last;
+			count += chnk.chunk->header()->alive;
 		}
 		EXPECT_EQ(count, 1000);
 	}

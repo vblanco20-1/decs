@@ -13,7 +13,7 @@ target_include_directories(
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-option(BUILD_TESTING "Enable testing with ctest." ON)
+option(BUILD_TESTING "Enable testing with ctest." OFF)
 
 
 if(BUILD_TESTING)
@@ -34,7 +34,7 @@ if(BUILD_TESTING)
 		FetchContent_Declare(googletest
 		#ExternalProject_Add(googletest
 		  GIT_REPOSITORY    https://github.com/google/googletest.git
-		  GIT_TAG           master
+		  GIT_TAG           main
 		  SOURCE_DIR        "${GOOGLETEST_DEPS_DIR}/src"
 		  BINARY_DIR        "${GOOGLETEST_DEPS_DIR}/build"
 		  CONFIGURE_COMMAND ""
